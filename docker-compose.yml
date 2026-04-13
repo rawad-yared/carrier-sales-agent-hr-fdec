@@ -1,0 +1,45 @@
+# Local dev stack for the carrier sales PoC.
+# Status: STUB. The api and dashboard services reference Dockerfiles that do not
+# exist yet — `docker compose up api dashboard` will fail until those are added.
+# `docker compose up db` works today for standalone Postgres.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: carrier
+      POSTGRES_PASSWORD: carrier
+      POSTGRES_DB: carrier_sales
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carrier -d carrier_sales"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: ./api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://carrier:carrier@db:5432/carrier_sales
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  dashboard:
+    build: ./dashboard
+    env_file: .env
+    environment:
+      API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+
+volumes:
+  db_data:
