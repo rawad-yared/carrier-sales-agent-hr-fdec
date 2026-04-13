@@ -1,7 +1,7 @@
 # Local dev stack for the carrier sales PoC.
-# Status: STUB. The api and dashboard services reference Dockerfiles that do not
-# exist yet — `docker compose up api dashboard` will fail until those are added.
-# `docker compose up db` works today for standalone Postgres.
+# `docker compose up --build` brings up Postgres, the FastAPI api, and the
+# Streamlit dashboard. The api entrypoint runs alembic migrations and seeds
+# loads from /app/data/loads.json (mounted read-only from ./data).
 
 services:
   db:
@@ -10,8 +10,8 @@ services:
       POSTGRES_USER: carrier
       POSTGRES_PASSWORD: carrier
       POSTGRES_DB: carrier_sales
-    ports:
-      - "5432:5432"
+    # No host port mapping — the api reaches db via the compose network.
+    # Expose a host port here if you need psql access from the host.
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +24,10 @@ services:
     build: ./api
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://carrier:carrier@db:5432/carrier_sales
+      DATABASE_URL: postgresql+psycopg://carrier:carrier@db:5432/carrier_sales
+      LOADS_JSON_PATH: /app/data/loads.json
+    volumes:
+      - ./data:/app/data:ro
     ports:
       - "8000:8000"
     depends_on:
