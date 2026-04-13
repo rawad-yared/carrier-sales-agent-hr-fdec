@@ -5,6 +5,9 @@ from decimal import Decimal
 os.environ.setdefault("API_KEY", "test-api-key")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("FMCSA_WEBKEY", "test-fmcsa-key")
+# Disable rate limiting for non-rate-limit tests. test_rate_limit.py builds
+# its own throwaway app with a dedicated limiter instance.
+os.environ.setdefault("RATE_LIMIT_PER_MIN", "100000")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -12,7 +15,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from app.db.models import Load, Negotiation  # noqa: E402
+from app.db.models import Call, Load, Negotiation  # noqa: E402
 from app.deps import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -29,6 +32,7 @@ def engine():
     )
     Load.__table__.create(eng)
     Negotiation.__table__.create(eng)
+    Call.__table__.create(eng)
     yield eng
     eng.dispose()
 

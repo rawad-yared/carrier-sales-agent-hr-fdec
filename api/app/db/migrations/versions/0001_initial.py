@@ -71,14 +71,7 @@ def upgrade() -> None:
         sa.Column("negotiation_rounds", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("started_at", postgresql.TIMESTAMP(timezone=True), nullable=False),
         sa.Column("ended_at", postgresql.TIMESTAMP(timezone=True), nullable=False),
-        sa.Column(
-            "duration_seconds",
-            sa.Integer(),
-            sa.Computed(
-                "(EXTRACT(EPOCH FROM ended_at - started_at))::INT",
-                persisted=True,
-            ),
-        ),
+        sa.Column("duration_seconds", sa.Integer()),
         sa.Column("transcript", sa.Text()),
         sa.Column("extracted", postgresql.JSONB()),
         sa.Column(

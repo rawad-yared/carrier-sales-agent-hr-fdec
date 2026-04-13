@@ -26,7 +26,14 @@ def current_request_id() -> str:
     return _request_id_ctx.get()
 
 
+from app.config import get_settings  # noqa: E402
+from app.middleware.rate_limit import InMemoryRateLimiter  # noqa: E402
+
 app = FastAPI(title="Carrier Sales API", version="0.1.0")
+# Order matters: add_middleware is LIFO on request. Adding RateLimiter first
+# then RequestId means RequestId wraps RateLimiter — so even 429 responses
+# carry a request_id set by the outer middleware.
+app.add_middleware(InMemoryRateLimiter, limit=get_settings().rate_limit_per_min)
 app.add_middleware(RequestIdMiddleware)
 
 
@@ -60,9 +67,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-from app.routers import carriers, health, loads, offers  # noqa: E402
+from app.routers import calls, carriers, health, loads, metrics, offers  # noqa: E402
 
 app.include_router(health.router)
 app.include_router(loads.router)
 app.include_router(offers.router)
 app.include_router(carriers.router)
+app.include_router(calls.router)
+app.include_router(metrics.router)

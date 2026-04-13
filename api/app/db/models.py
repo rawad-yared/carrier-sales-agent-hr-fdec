@@ -2,9 +2,9 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     CheckConstraint,
-    Computed,
     DateTime,
     ForeignKey,
     Index,
@@ -13,6 +13,8 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+
+JsonCol = JSONB().with_variant(JSON(), "sqlite")
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -70,7 +72,7 @@ class Carrier(Base):
     carrier_name: Mapped[str | None] = mapped_column(Text)
     dot_number: Mapped[str | None] = mapped_column(Text)
     allowed_to_operate: Mapped[str | None] = mapped_column(Text)
-    raw_fmcsa_response: Mapped[dict | None] = mapped_column(JSONB)
+    raw_fmcsa_response: Mapped[dict | None] = mapped_column(JsonCol)
     last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -88,12 +90,9 @@ class Call(Base):
     negotiation_rounds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    duration_seconds: Mapped[int | None] = mapped_column(
-        Integer,
-        Computed("(EXTRACT(EPOCH FROM ended_at - started_at))::INT", persisted=True),
-    )
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
     transcript: Mapped[str | None] = mapped_column(Text)
-    extracted: Mapped[dict | None] = mapped_column(JSONB)
+    extracted: Mapped[dict | None] = mapped_column(JsonCol)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
