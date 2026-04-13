@@ -23,7 +23,8 @@ class LoadOut(BaseModel):
 
 
 class SearchLoadsRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Defensive coercion for LLM-originated tool calls.
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
 
     origin: str | None = None
     destination: str | None = None

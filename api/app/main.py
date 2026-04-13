@@ -3,6 +3,7 @@ import uuid
 from contextvars import ContextVar
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -49,6 +50,23 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": {"code": code, "message": message, "request_id": current_request_id()}},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Log the 422 with the exact validation errors so we can diagnose
+    # LLM-tool-call shape mismatches from CloudWatch. Never leaks secrets
+    # because request bodies for our API don't contain the API key.
+    logger.warning(
+        "validation_error path=%s errors=%s",
+        request.url.path,
+        exc.errors(),
+        extra={"request_id": current_request_id()},
+    )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
     )
 
 

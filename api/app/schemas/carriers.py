@@ -2,7 +2,10 @@ from pydantic import BaseModel, ConfigDict
 
 
 class VerifyCarrierRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # LLMs in HappyRobot's tool-calling layer sometimes send mc_number as a
+    # JSON number (e.g. 123456) instead of a string. Coerce defensively —
+    # mc_number is always treated as an opaque identifier downstream.
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
 
     mc_number: str
 

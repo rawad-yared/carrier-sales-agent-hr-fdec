@@ -145,6 +145,49 @@ def test_log_call_happyrobot_shape_without_extracted(client):
     assert r.status_code == 201
 
 
+def test_log_call_accepts_human_readable_ended_at(client):
+    """HappyRobot's Now (UTC) variable emits e.g. 'Monday, April 13, 2026 07:36:05 PM UTC'."""
+    r = client.post(
+        "/api/log-call",
+        json={
+            "session_id": "hr-datetime-1",
+            "outcome": "booked",
+            "sentiment": "positive",
+            "ended_at": "Monday, April 13, 2026 07:36:05 PM UTC",
+            "call_duration_seconds": 120,
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 201
+
+
+def test_log_call_flattens_list_transcript(client):
+    """HappyRobot's Session Transcript is a list of message dicts, not a string."""
+    r = client.post(
+        "/api/log-call",
+        json={
+            "session_id": "hr-transcript-1",
+            "outcome": "booked",
+            "sentiment": "positive",
+            "ended_at": "2026-04-13T14:05:00Z",
+            "call_duration_seconds": 120,
+            "transcript": [
+                {"role": "assistant", "content": "Hi, thanks for calling."},
+                {"role": "user", "content": "MC is 123456."},
+                {"role": "assistant", "content": {"tool": "verify_carrier"}},
+            ],
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 201
+    # Verify the list was flattened to a string in the DB
+    listing = client.get("/api/calls?since=2020-01-01T00:00:00Z", headers=AUTH).json()
+    row = next(c for c in listing["results"] if c["session_id"] == "hr-transcript-1")
+    assert isinstance(row["transcript"], str)
+    assert "assistant:" in row["transcript"]
+    assert "user:" in row["transcript"]
+
+
 def test_log_call_rejects_unknown_field(client):
     """extra=forbid should still reject unknown keys (typo protection)."""
     r = client.post(
