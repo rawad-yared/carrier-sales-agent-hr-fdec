@@ -17,6 +17,16 @@ Sentiment = Literal["positive", "neutral", "negative"]
 
 
 class LogCallRequest(BaseModel):
+    """Body for POST /api/log-call.
+
+    The HappyRobot log_call webhook sends: session_id, mc_number, carrier_name,
+    load_id, outcome, sentiment, final_price, negotiation_rounds, ended_at,
+    transcript, call_duration_seconds. It does NOT send started_at (HappyRobot
+    doesn't expose call-start time as a variable) so the server computes it as
+    ended_at - call_duration_seconds. The nested `extracted` object is also
+    optional — HappyRobot will start sending it later.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
@@ -27,10 +37,11 @@ class LogCallRequest(BaseModel):
     sentiment: Sentiment
     final_price: Decimal | None = None
     negotiation_rounds: int = Field(default=0, ge=0, le=3)
-    started_at: datetime
+    started_at: datetime | None = None
     ended_at: datetime
+    call_duration_seconds: float = Field(default=0.0, ge=0.0)
     transcript: str | None = None
-    extracted: dict[str, Any] | None = None
+    extracted: dict[str, Any] = Field(default_factory=dict)
 
 
 class LogCallResponse(BaseModel):

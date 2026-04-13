@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Carrier Sales — Post-Call Extraction",
+  "description": "Fields the HappyRobot post-call extraction node should pull from the conversation. The agent's turns, the tool responses, and the carrier's words are all available as input. Emit null for anything not present.",
+  "type": "object",
+  "required": ["mc_number", "negotiation_rounds"],
+  "properties": {
+    "mc_number": {
+      "type": ["string", "null"],
+      "description": "The MC number the carrier provided (digits only, no prefix). Null if they never gave one (e.g., abandoned before capture).",
+      "examples": ["123456", "789012", null]
+    },
+    "carrier_name": {
+      "type": ["string", "null"],
+      "description": "Legal carrier name from the verify_carrier tool response. Do not invent if verify_carrier wasn't called."
+    },
+    "load_id": {
+      "type": ["string", "null"],
+      "description": "The load_id from search_loads that this call was about. Null for no_match, abandoned, or carrier_ineligible calls.",
+      "examples": ["L-1001", null]
+    },
+    "carrier_equipment": {
+      "type": ["string", "null"],
+      "description": "What equipment the carrier is running. One of: Dry Van, Reefer, Flatbed, Power Only, or null if not mentioned.",
+      "enum": ["Dry Van", "Reefer", "Flatbed", "Power Only", null]
+    },
+    "carrier_current_location": {
+      "type": ["string", "null"],
+      "description": "Where the carrier said they are right now (city, state). Null if they didn't mention it."
+    },
+    "notes_from_carrier": {
+      "type": ["string", "null"],
+      "description": "Free-text summary of anything the carrier said that isn't standard: constraints (can't load before noon), preferences, concerns, asks. Keep under 200 chars."
+    },
+    "counter_offers_made": {
+      "type": "array",
+      "description": "Every USD number the carrier proposed during negotiation, in order. Empty array if they accepted the listed rate with no counter.",
+      "items": {"type": "number"},
+      "examples": [[2300, 2330], [], [1900, 1950, 1980]]
+    },
+    "final_agreed_price": {
+      "type": ["number", "null"],
+      "description": "The USD number the call ultimately closed on. Present only when outcome=booked. Null for every other outcome."
+    },
+    "negotiation_rounds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "How many times the agent called evaluate_offer. 0 for instant accept at listed rate, or for calls that never entered negotiation (no_match, carrier_ineligible, abandoned)."
+    }
+  },
+  "example": {
+    "mc_number": "123456",
+    "carrier_name": "ACME TRUCKING LLC",
+    "load_id": "L-1001",
+    "carrier_equipment": "Dry Van",
+    "carrier_current_location": "Fort Worth, TX",
+    "notes_from_carrier": "Can pick up first thing tomorrow morning",
+    "counter_offers_made": [2300, 2330],
+    "final_agreed_price": 2340.00,
+    "negotiation_rounds": 2
+  }
+}

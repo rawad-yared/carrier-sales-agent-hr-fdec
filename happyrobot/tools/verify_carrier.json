@@ -1,0 +1,76 @@
+{
+  "name": "verify_carrier",
+  "description": "Verify that a trucking carrier is eligible to operate by looking up their MC (motor carrier) number in the FMCSA database. Returns whether the carrier is allowed to operate, their legal name, and DOT number. Call this immediately after the carrier provides their MC number.",
+  "http": {
+    "method": "POST",
+    "url": "https://carrier-sales-demo.com/api/verify-carrier",
+    "headers": {
+      "X-API-Key": "{{SECRETS.CARRIER_SALES_API_KEY}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "mc_number": "{{parameters.mc_number}}"
+    }
+  },
+  "parameters": {
+    "type": "object",
+    "required": ["mc_number"],
+    "properties": {
+      "mc_number": {
+        "type": "string",
+        "description": "The 1-8 digit MC (Motor Carrier) number the carrier provided. Strip any 'MC' prefix and non-digit characters before passing.",
+        "pattern": "^\\d{1,8}$",
+        "examples": ["123456", "789012"]
+      }
+    }
+  },
+  "response_schema": {
+    "type": "object",
+    "properties": {
+      "eligible": {
+        "type": "boolean",
+        "description": "true if the carrier is allowed to operate. Use this to branch in the workflow."
+      },
+      "mc_number": {"type": "string"},
+      "carrier_name": {"type": "string", "description": "Legal name of the carrier (e.g., ACME TRUCKING LLC)"},
+      "dot_number": {"type": "string"},
+      "allowed_to_operate": {"type": "string", "enum": ["Y", "N"]},
+      "raw_fmcsa_status": {"type": "string"},
+      "reason": {
+        "type": "string",
+        "description": "Only present when eligible=false. Value: 'not_allowed_to_operate'."
+      }
+    }
+  },
+  "errors": {
+    "400 invalid_mc_number": "MC number format is invalid (must be 1-8 digits). Ask the carrier to repeat their MC number clearly.",
+    "404 carrier_not_found": "FMCSA has no record of this MC. Politely tell the carrier we can't find them and end the call as carrier_ineligible.",
+    "502 fmcsa_unavailable": "FMCSA upstream error. Safe to retry once. If still failing, end the call as 'error'."
+  },
+  "examples": [
+    {
+      "name": "eligible carrier",
+      "request": {"mc_number": "123456"},
+      "response": {
+        "eligible": true,
+        "mc_number": "123456",
+        "carrier_name": "ACME TRUCKING LLC",
+        "dot_number": "7654321",
+        "allowed_to_operate": "Y",
+        "raw_fmcsa_status": "ACTIVE"
+      }
+    },
+    {
+      "name": "ineligible carrier",
+      "request": {"mc_number": "999999"},
+      "response": {
+        "eligible": false,
+        "mc_number": "999999",
+        "carrier_name": "OLD TRUCKING",
+        "allowed_to_operate": "N",
+        "raw_fmcsa_status": "INACTIVE",
+        "reason": "not_allowed_to_operate"
+      }
+    }
+  ]
+}

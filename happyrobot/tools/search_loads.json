@@ -1,0 +1,106 @@
+{
+  "name": "search_loads",
+  "description": "Search the load board for loads matching the carrier's lane and equipment preferences. All parameters are optional — if the carrier doesn't specify a preference, omit the field and you'll get the next N available loads. Call this after you know the carrier's origin/destination and/or equipment type.",
+  "http": {
+    "method": "POST",
+    "url": "https://carrier-sales-demo.com/api/search-loads",
+    "headers": {
+      "X-API-Key": "{{SECRETS.CARRIER_SALES_API_KEY}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "origin": "{{parameters.origin}}",
+      "destination": "{{parameters.destination}}",
+      "equipment_type": "{{parameters.equipment_type}}",
+      "pickup_date": "{{parameters.pickup_date}}",
+      "max_results": "{{parameters.max_results}}"
+    }
+  },
+  "parameters": {
+    "type": "object",
+    "required": [],
+    "properties": {
+      "origin": {
+        "type": "string",
+        "description": "City or state the carrier is picking up from. Fuzzy matched — 'Dallas' or 'TX' both work.",
+        "examples": ["Dallas, TX", "TX", "Chicago"]
+      },
+      "destination": {
+        "type": "string",
+        "description": "City or state the carrier wants to deliver to. Fuzzy matched.",
+        "examples": ["Atlanta, GA", "GA"]
+      },
+      "equipment_type": {
+        "type": "string",
+        "description": "Equipment the carrier has. Exact match against one of the values below. Ask the carrier which they drive if unclear.",
+        "enum": ["Dry Van", "Reefer", "Flatbed", "Power Only"]
+      },
+      "pickup_date": {
+        "type": "string",
+        "description": "ISO date (YYYY-MM-DD) if the carrier is asking for a specific day. Usually omitted.",
+        "examples": ["2026-04-15"]
+      },
+      "max_results": {
+        "type": "integer",
+        "description": "How many loads to return. Default 3 — aim for 1 great match, not a menu.",
+        "default": 3,
+        "minimum": 1,
+        "maximum": 10
+      }
+    }
+  },
+  "response_schema": {
+    "type": "object",
+    "properties": {
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "load_id": {"type": "string", "description": "Pass this exactly to evaluate_offer and log_call"},
+            "origin": {"type": "string"},
+            "destination": {"type": "string"},
+            "pickup_datetime": {"type": "string", "format": "date-time"},
+            "delivery_datetime": {"type": "string", "format": "date-time"},
+            "equipment_type": {"type": "string"},
+            "loadboard_rate": {"type": "number", "description": "Listed rate in USD. This is the anchor for negotiation."},
+            "notes": {"type": "string"},
+            "weight": {"type": "integer"},
+            "commodity_type": {"type": "string"},
+            "miles": {"type": "integer"}
+          }
+        }
+      },
+      "count": {"type": "integer"}
+    }
+  },
+  "pitching_notes": [
+    "If count=0, apologize and end the call with outcome=no_match.",
+    "Pitch with origin -> destination, pickup day/time, equipment, miles, and the rate as a round USD figure ('twenty-four hundred' not '2400.00').",
+    "Only mention the notes field if there's something actionable (e.g., 'drop-and-hook at destination', 'tarps required')."
+  ],
+  "examples": [
+    {
+      "name": "dry van lane",
+      "request": {"origin": "Dallas, TX", "destination": "Atlanta, GA", "equipment_type": "Dry Van", "max_results": 3},
+      "response": {
+        "results": [
+          {
+            "load_id": "L-1001",
+            "origin": "Dallas, TX",
+            "destination": "Atlanta, GA",
+            "pickup_datetime": "2026-04-15T08:00:00Z",
+            "delivery_datetime": "2026-04-16T18:00:00Z",
+            "equipment_type": "Dry Van",
+            "loadboard_rate": 2400.00,
+            "notes": "No-touch freight, drop-and-hook at destination",
+            "weight": 18500,
+            "commodity_type": "Packaged consumer goods",
+            "miles": 781
+          }
+        ],
+        "count": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "name": "evaluate_offer",
+  "description": "Apply the broker's negotiation policy to a carrier's counter-offer and decide whether to accept, counter, or reject. Call this every time the carrier proposes a price different from the listed rate. You MUST track and pass the current round number (1, 2, or 3). On round 3 the policy always produces a final answer — no more rounds after that.",
+  "http": {
+    "method": "POST",
+    "url": "https://carrier-sales-demo.com/api/evaluate-offer",
+    "headers": {
+      "X-API-Key": "{{SECRETS.CARRIER_SALES_API_KEY}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "load_id": "{{parameters.load_id}}",
+      "carrier_offer": "{{parameters.carrier_offer}}",
+      "round_number": "{{parameters.round_number}}",
+      "session_id": "{{session.id}}"
+    }
+  },
+  "parameters": {
+    "type": "object",
+    "required": ["load_id", "carrier_offer", "round_number"],
+    "properties": {
+      "load_id": {
+        "type": "string",
+        "description": "The exact load_id returned by search_loads (e.g. 'L-1001')."
+      },
+      "carrier_offer": {
+        "type": "number",
+        "description": "The USD amount the carrier just proposed. Numbers only (no '$' or commas).",
+        "minimum": 0.01,
+        "examples": [2300.00, 1950.00]
+      },
+      "round_number": {
+        "type": "integer",
+        "description": "Which negotiation round this is (1, 2, or 3). You track this yourself across the conversation — start at 1 the first time the carrier counters, increment each subsequent counter.",
+        "minimum": 1,
+        "maximum": 3
+      }
+    }
+  },
+  "response_schema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["accept", "counter", "reject"],
+        "description": "'accept' = deal closed at carrier's price; 'counter' = relay counter_price to the carrier; 'reject' = walk away (round 3 only)."
+      },
+      "counter_price": {
+        "type": ["number", "null"],
+        "description": "Present only when action=counter. The price to propose back to the carrier in USD."
+      },
+      "round_number": {"type": "integer"},
+      "reasoning": {
+        "type": "string",
+        "description": "Human-readable explanation of the decision. Do NOT read this to the carrier — it's for logs."
+      },
+      "final": {
+        "type": "boolean",
+        "description": "true = negotiation is over (accept or reject). false = another round is possible (counter). If final=true, do NOT call evaluate_offer again in this conversation."
+      }
+    }
+  },
+  "agent_phrasing": {
+    "accept": "\"Great, we have a deal at $X. Let me transfer you to a rep now.\"",
+    "counter": "\"I can't quite do that, but I can meet you at $X. Does that work?\"",
+    "reject_final": "\"Unfortunately I can't go that low on this one. Thanks for calling though — feel free to reach out for future loads.\""
+  },
+  "round_tracking": "CRITICAL: You (the agent) must track round_number in conversation state. Increment it each time the carrier proposes a new number. Never pass round_number=0. If the carrier accepts your counter verbatim, that's an agreement — do NOT call evaluate_offer again, just transfer.",
+  "errors": {
+    "400 invalid_round": "round_number not in {1,2,3}. You miscounted — reset and try again.",
+    "400 invalid_offer": "carrier_offer is zero or negative. Re-ask the carrier for their number.",
+    "404 load_not_found": "load_id doesn't exist. You passed the wrong id — use the one from search_loads verbatim."
+  },
+  "examples": [
+    {
+      "name": "round 1 counter",
+      "request": {"load_id": "L-1001", "carrier_offer": 2300.00, "round_number": 1, "session_id": "sess-abc123"},
+      "response": {
+        "action": "counter",
+        "counter_price": 2350.00,
+        "round_number": 1,
+        "reasoning": "Round 1: offer 2300 above floor 2208.00 but below target 2352.00; countering at midpoint.",
+        "final": false
+      }
+    },
+    {
+      "name": "round 1 instant accept (carrier offered near listed rate)",
+      "request": {"load_id": "L-1001", "carrier_offer": 2360.00, "round_number": 1, "session_id": "sess-abc123"},
+      "response": {
+        "action": "accept",
+        "counter_price": null,
+        "round_number": 1,
+        "reasoning": "Round 1: offer 2360 at or above target 2352.00; instant accept.",
+        "final": true
+      }
+    },
+    {
+      "name": "round 3 reject (lowball final)",
+      "request": {"load_id": "L-1001", "carrier_offer": 2000.00, "round_number": 3, "session_id": "sess-abc123"},
+      "response": {
+        "action": "reject",
+        "counter_price": null,
+        "round_number": 3,
+        "reasoning": "Round 3 final: offer 2000 below floor 2208.00; walking away.",
+        "final": true
+      }
+    }
+  ]
+}

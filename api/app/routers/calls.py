@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy import func, select
@@ -12,6 +12,33 @@ from app.schemas.calls import CallOut, CallsListResponse, LogCallRequest, LogCal
 router = APIRouter(tags=["calls"], dependencies=[Depends(require_api_key)])
 
 
+def _resolve_start_and_duration(req: LogCallRequest) -> tuple[datetime, int]:
+    """Figure out the canonical started_at and duration_seconds for a call.
+
+    HappyRobot sends `ended_at` + `call_duration_seconds` (no start time).
+    Older clients and tests send `started_at` + `ended_at` (no duration).
+    This reconciles both:
+
+    - If call_duration_seconds is provided (> 0), it's the source of truth.
+    - Otherwise derive duration from (ended_at - started_at) if we have both.
+    - started_at is taken verbatim if provided, else computed as
+      ended_at - duration.
+    """
+    if req.call_duration_seconds > 0:
+        duration = int(req.call_duration_seconds)
+    elif req.started_at is not None:
+        duration = int((req.ended_at - req.started_at).total_seconds())
+    else:
+        duration = 0
+
+    if req.started_at is not None:
+        started_at = req.started_at
+    else:
+        started_at = req.ended_at - timedelta(seconds=duration)
+
+    return started_at, duration
+
+
 @router.post(
     "/log-call",
     response_model=LogCallResponse,
@@ -22,7 +49,30 @@ def log_call(
     response: Response,
     db: Session = Depends(get_db),
 ) -> LogCallResponse:
-    duration = int((req.ended_at - req.started_at).total_seconds())
+    """Persist a completed carrier call.
+
+    Example request (HappyRobot shape):
+
+        {
+          "session_id": "hr-call-abc123",
+          "mc_number": "123456",
+          "carrier_name": "ACME TRUCKING LLC",
+          "load_id": "L-1001",
+          "outcome": "booked",
+          "sentiment": "positive",
+          "final_price": 2340.00,
+          "negotiation_rounds": 2,
+          "ended_at": "2026-04-13T14:26:44Z",
+          "call_duration_seconds": 283,
+          "transcript": "Agent: Hi...\nCarrier: MC is 123456..."
+        }
+
+    Idempotent on `session_id` — a repeat POST with the same session_id
+    updates the existing row and returns status "updated" (HTTP 200), rather
+    than creating a duplicate. A first-time insert returns status "logged"
+    (HTTP 201).
+    """
+    started_at, duration = _resolve_start_and_duration(req)
 
     existing = db.execute(
         select(Call).where(Call.session_id == req.session_id)
@@ -36,7 +86,7 @@ def log_call(
         existing.sentiment = req.sentiment
         existing.final_price = req.final_price
         existing.negotiation_rounds = req.negotiation_rounds
-        existing.started_at = req.started_at
+        existing.started_at = started_at
         existing.ended_at = req.ended_at
         existing.duration_seconds = duration
         existing.transcript = req.transcript
@@ -55,7 +105,7 @@ def log_call(
         sentiment=req.sentiment,
         final_price=req.final_price,
         negotiation_rounds=req.negotiation_rounds,
-        started_at=req.started_at,
+        started_at=started_at,
         ended_at=req.ended_at,
         duration_seconds=duration,
         transcript=req.transcript,

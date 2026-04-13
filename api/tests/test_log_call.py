@@ -90,3 +90,73 @@ def test_log_call_minimal_fields(client):
 def test_log_call_requires_api_key(client):
     r = client.post("/api/log-call", json=_payload())
     assert r.status_code == 401
+
+
+def test_log_call_accepts_happyrobot_shape(client):
+    """HappyRobot sends ended_at + call_duration_seconds, no started_at.
+    Server should accept and compute started_at.
+    """
+    r = client.post(
+        "/api/log-call",
+        json={
+            "session_id": "hr-shape-1",
+            "mc_number": "123456",
+            "carrier_name": "B MARRON LOGISTICS LLC",
+            "load_id": "L-9001",
+            "outcome": "booked",
+            "sentiment": "positive",
+            "final_price": 2340.00,
+            "negotiation_rounds": 2,
+            "ended_at": "2026-04-13T14:05:00Z",
+            "call_duration_seconds": 300.0,
+            "transcript": "short",
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["status"] == "logged"
+    call_id = body["call_id"]
+
+    # Verify started_at was computed as ended_at - 300s = 14:00:00
+    listing = client.get(
+        "/api/calls?outcome=booked&since=2020-01-01T00:00:00Z",
+        headers=AUTH,
+    ).json()
+    row = next(c for c in listing["results"] if c["call_id"] == call_id)
+    assert row["started_at"].startswith("2026-04-13T14:00:00")
+    assert row["duration_seconds"] == 300
+    assert row["final_price"] == "2340.00"
+
+
+def test_log_call_happyrobot_shape_without_extracted(client):
+    """extracted should default to empty dict when HR doesn't send it."""
+    r = client.post(
+        "/api/log-call",
+        json={
+            "session_id": "hr-shape-2",
+            "outcome": "no_match",
+            "sentiment": "neutral",
+            "ended_at": "2026-04-13T14:05:00Z",
+            "call_duration_seconds": 45.0,
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 201
+
+
+def test_log_call_rejects_unknown_field(client):
+    """extra=forbid should still reject unknown keys (typo protection)."""
+    r = client.post(
+        "/api/log-call",
+        json={
+            "session_id": "hr-shape-3",
+            "outcome": "booked",
+            "sentiment": "positive",
+            "ended_at": "2026-04-13T14:05:00Z",
+            "call_duration_seconds": 45.0,
+            "mysterious_field": "should be rejected",
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 422

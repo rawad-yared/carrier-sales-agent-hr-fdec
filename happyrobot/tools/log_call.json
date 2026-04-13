@@ -1,0 +1,111 @@
+{
+  "name": "log_call",
+  "description": "Persist a completed call to the broker's dashboard. Called exactly once per call, from HappyRobot's post-call node after extraction and classification are done. The backend is idempotent on session_id — safe to retry on transient failure. HappyRobot sends ended_at + call_duration_seconds; the server computes started_at.",
+  "http": {
+    "method": "POST",
+    "url": "https://carrier-sales-demo.com/api/log-call",
+    "headers": {
+      "X-API-Key": "{{CARRIER_SALES_API_KEY}}",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "session_id": "{{session.id}}",
+      "mc_number": "{{extracted.mc_number}}",
+      "carrier_name": "{{extracted.carrier_name}}",
+      "load_id": "{{extracted.load_id}}",
+      "outcome": "{{classification.outcome}}",
+      "sentiment": "{{classification.sentiment}}",
+      "final_price": "{{extracted.final_agreed_price}}",
+      "negotiation_rounds": "{{extracted.negotiation_rounds}}",
+      "ended_at": "{{now_utc}}",
+      "call_duration_seconds": "{{call_duration_seconds}}",
+      "transcript": "{{session.transcript}}"
+    }
+  },
+  "parameters": {
+    "type": "object",
+    "required": ["session_id", "outcome", "sentiment", "ended_at", "call_duration_seconds"],
+    "properties": {
+      "session_id": {
+        "type": "string",
+        "description": "Unique ID for this call. Use the HappyRobot Session Id variable verbatim."
+      },
+      "mc_number": {
+        "type": ["string", "null"],
+        "description": "MC number the carrier gave. Null if carrier didn't provide one (e.g., abandoned before MC capture)."
+      },
+      "carrier_name": {"type": ["string", "null"]},
+      "load_id": {
+        "type": ["string", "null"],
+        "description": "Load ID the call was about. Null for outcomes that didn't involve a load (no_match, carrier_ineligible, abandoned)."
+      },
+      "outcome": {
+        "type": "string",
+        "enum": ["booked", "carrier_declined", "broker_declined", "no_match", "carrier_ineligible", "abandoned", "error"],
+        "description": "How the call ended. Exactly one. See classification.md for rules."
+      },
+      "sentiment": {
+        "type": "string",
+        "enum": ["positive", "neutral", "negative"],
+        "description": "Carrier's tone during the call."
+      },
+      "final_price": {
+        "type": ["number", "null"],
+        "description": "Agreed USD price. Present only when outcome=booked."
+      },
+      "negotiation_rounds": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 3,
+        "description": "How many evaluate_offer calls happened. 0 for instant accept at listed rate, or for outcomes that never entered negotiation."
+      },
+      "ended_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "ISO 8601 UTC. Use HappyRobot's Now (UTC) variable."
+      },
+      "call_duration_seconds": {
+        "type": "number",
+        "minimum": 0,
+        "description": "How long the call lasted. Use HappyRobot's Call Duration variable. The server uses this plus ended_at to compute started_at."
+      },
+      "transcript": {
+        "type": ["string", "null"],
+        "description": "Full conversation transcript."
+      }
+    }
+  },
+  "response_schema": {
+    "type": "object",
+    "properties": {
+      "call_id": {"type": "string", "description": "Generated server-side, prefixed c-<uuid>"},
+      "status": {"type": "string", "enum": ["logged", "updated"], "description": "'updated' if a retry matched an existing session_id"}
+    }
+  },
+  "examples": [
+    {
+      "name": "booked call",
+      "request": {
+        "session_id": "hr-call-abc123",
+        "mc_number": "123456",
+        "carrier_name": "ACME TRUCKING LLC",
+        "load_id": "L-1001",
+        "outcome": "booked",
+        "sentiment": "positive",
+        "final_price": 2340.00,
+        "negotiation_rounds": 2,
+        "ended_at": "2026-04-13T14:26:44Z",
+        "call_duration_seconds": 283,
+        "transcript": "Agent: Hi, thanks for calling..."
+      },
+      "response": {
+        "call_id": "c-7f3e9a1b-4d2c-41a0-9b1e-88a7c3f5e2d1",
+        "status": "logged"
+      }
+    }
+  ],
+  "notes_for_happyrobot_author": [
+    "started_at is NOT in the request body — the server derives it from ended_at - call_duration_seconds.",
+    "extracted (nested object with carrier_equipment, notes_from_carrier, etc.) is optional and omitted in this version. Will be added back when HR's extraction node surfaces those fields."
+  ]
+}
