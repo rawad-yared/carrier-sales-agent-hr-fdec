@@ -1,3 +1,6 @@
+# Build context is the repo ROOT (so we can copy ../data alongside ./api).
+# Local: `docker compose build api` — see docker-compose.yml.
+# Prod:  `docker buildx build --file api/Dockerfile .` — see scripts/build-and-push.sh.
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,10 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-COPY app/ ./app/
-COPY alembic.ini ./
-COPY entrypoint.sh ./
+COPY api/pyproject.toml ./
+COPY api/app ./app
+COPY api/alembic.ini ./
+COPY api/entrypoint.sh ./
+COPY data ./data
 
 RUN pip install --upgrade pip && pip install . \
     && chmod +x entrypoint.sh

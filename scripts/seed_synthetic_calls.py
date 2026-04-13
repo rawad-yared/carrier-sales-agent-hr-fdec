@@ -184,13 +184,13 @@ def _build_fixture() -> list[dict]:
 
 def main() -> int:
     calls = _build_fixture()
-    print(f"→ posting {len(calls)} synthetic calls to {API_BASE}/log-call")
+    print(f"→ posting {len(calls)} synthetic calls to {API_BASE}/api/log-call")
     ok = 0
     fails: list[str] = []
     with httpx.Client(timeout=10.0) as http:
         for call in calls:
             resp = http.post(
-                f"{API_BASE}/log-call",
+                f"{API_BASE}/api/log-call",
                 json=call,
                 headers={"X-API-Key": API_KEY},
             )

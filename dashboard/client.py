@@ -28,7 +28,7 @@ def _iso(value: datetime | str | None) -> str | None:
 
 
 def health() -> dict:
-    r = httpx.get(f"{BASE_URL}/health", timeout=_TIMEOUT)
+    r = httpx.get(f"{BASE_URL}/api/health", timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
@@ -46,7 +46,7 @@ def list_calls(
     since_iso = _iso(since)
     if since_iso:
         params["since"] = since_iso
-    r = httpx.get(f"{BASE_URL}/calls", params=params, headers=_headers(), timeout=_TIMEOUT)
+    r = httpx.get(f"{BASE_URL}/api/calls", params=params, headers=_headers(), timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
@@ -57,7 +57,7 @@ def search_loads_all() -> dict:
     join loadboard_rate and lane strings onto calls client-side.
     """
     r = httpx.post(
-        f"{BASE_URL}/search-loads",
+        f"{BASE_URL}/api/search-loads",
         json={"max_results": 500},
         headers=_headers(),
         timeout=_TIMEOUT,
@@ -73,7 +73,7 @@ def metrics_summary(since: datetime | None = None) -> dict:
     if since_iso:
         params["since"] = since_iso
     r = httpx.get(
-        f"{BASE_URL}/metrics/summary",
+        f"{BASE_URL}/api/metrics/summary",
         params=params,
         headers=_headers(),
         timeout=_TIMEOUT,

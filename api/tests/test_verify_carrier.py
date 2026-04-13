@@ -44,7 +44,7 @@ def test_verify_carrier_eligible(client, monkeypatch):
             }
         ),
     )
-    r = client.post("/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
+    r = client.post("/api/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
     assert r.status_code == 200
     body = r.json()
     assert body["eligible"] is True
@@ -69,7 +69,7 @@ def test_verify_carrier_ineligible(client, monkeypatch):
             }
         ),
     )
-    r = client.post("/verify-carrier", json={"mc_number": "999999"}, headers=AUTH)
+    r = client.post("/api/verify-carrier", json={"mc_number": "999999"}, headers=AUTH)
     assert r.status_code == 200
     body = r.json()
     assert body["eligible"] is False
@@ -78,14 +78,14 @@ def test_verify_carrier_ineligible(client, monkeypatch):
 
 def test_verify_carrier_not_found_returns_404(client, monkeypatch):
     monkeypatch.setattr(fmcsa.httpx, "get", lambda *a, **kw: _empty_response())
-    r = client.post("/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
+    r = client.post("/api/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "carrier_not_found"
 
 
 def test_verify_carrier_upstream_500_returns_502(client, monkeypatch):
     monkeypatch.setattr(fmcsa.httpx, "get", lambda *a, **kw: _error_response(500))
-    r = client.post("/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
+    r = client.post("/api/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
     assert r.status_code == 502
     assert r.json()["error"]["code"] == "fmcsa_unavailable"
 
@@ -95,18 +95,18 @@ def test_verify_carrier_network_error_returns_502(client, monkeypatch):
         raise httpx.ConnectError("connection refused")
 
     monkeypatch.setattr(fmcsa.httpx, "get", _raise)
-    r = client.post("/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
+    r = client.post("/api/verify-carrier", json={"mc_number": "123456"}, headers=AUTH)
     assert r.status_code == 502
     assert r.json()["error"]["code"] == "fmcsa_unavailable"
 
 
 @pytest.mark.parametrize("bad", ["", "abc", "123456789", "12-34", "mc123"])
 def test_verify_carrier_invalid_mc_format_returns_400(client, bad):
-    r = client.post("/verify-carrier", json={"mc_number": bad}, headers=AUTH)
+    r = client.post("/api/verify-carrier", json={"mc_number": bad}, headers=AUTH)
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "invalid_mc_number"
 
 
 def test_verify_carrier_requires_api_key(client):
-    r = client.post("/verify-carrier", json={"mc_number": "123456"})
+    r = client.post("/api/verify-carrier", json={"mc_number": "123456"})
     assert r.status_code == 401

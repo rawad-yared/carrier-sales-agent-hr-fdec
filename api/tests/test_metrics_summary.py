@@ -24,11 +24,11 @@ def _log(
     }
     if final_price is not None:
         payload["final_price"] = final_price
-    return client.post("/log-call", json=payload, headers=AUTH)
+    return client.post("/api/log-call", json=payload, headers=AUTH)
 
 
 def test_metrics_empty(client):
-    r = client.get("/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
     assert r.status_code == 200
     body = r.json()
     assert body["total_calls"] == 0
@@ -47,7 +47,7 @@ def test_metrics_counts_outcomes_and_sentiments(client):
     _log(client, "c", outcome="carrier_declined", sentiment="negative", load_id=None)
     _log(client, "d", outcome="no_match", sentiment="neutral", load_id=None)
 
-    r = client.get("/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
     body = r.json()
     assert body["total_calls"] == 4
     assert body["outcomes"]["booked"] == 2
@@ -67,7 +67,7 @@ def test_metrics_computes_delta_from_loadboard(client):
     _log(client, "x", outcome="booked", final_price=2400.00)
     _log(client, "y", outcome="booked", final_price=2352.00)
 
-    r = client.get("/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
     body = r.json()
     assert body["outcomes"]["booked"] == 2
     assert abs(body["avg_delta_from_loadboard"] - (-0.01)) < 1e-9
@@ -78,7 +78,7 @@ def test_metrics_avg_negotiation_rounds(client):
     _log(client, "r1", outcome="booked", negotiation_rounds=1, final_price=2400.00)
     _log(client, "r2", outcome="booked", negotiation_rounds=3, final_price=2400.00)
 
-    r = client.get("/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
     body = r.json()
     assert body["avg_negotiation_rounds"] == 2.0
 
@@ -87,12 +87,12 @@ def test_metrics_respects_since_filter(client):
     _log(client, "old", outcome="booked", final_price=2400.00, started_at="2020-01-01T00:00:00Z")
     _log(client, "new", outcome="booked", final_price=2400.00, started_at="2026-04-13T14:00:00Z")
 
-    r = client.get("/metrics/summary?since=2026-01-01T00:00:00Z", headers=AUTH)
+    r = client.get("/api/metrics/summary?since=2026-01-01T00:00:00Z", headers=AUTH)
     body = r.json()
     assert body["total_calls"] == 1
     assert body["outcomes"]["booked"] == 1
 
 
 def test_metrics_requires_api_key(client):
-    r = client.get("/metrics/summary")
+    r = client.get("/api/metrics/summary")
     assert r.status_code == 401

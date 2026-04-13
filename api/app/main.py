@@ -69,9 +69,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 from app.routers import calls, carriers, health, loads, metrics, offers  # noqa: E402
 
+# /health is mounted at the root for ALB target-group health checks that hit the
+# task directly on port 8000 (the ALB bypasses path routing for health).
+# All application routers are mounted under /api for ALB path-based routing:
+# ALB rule `/api/*` → api target group, default → dashboard target group.
 app.include_router(health.router)
-app.include_router(loads.router)
-app.include_router(offers.router)
-app.include_router(carriers.router)
-app.include_router(calls.router)
-app.include_router(metrics.router)
+app.include_router(health.router, prefix="/api")
+app.include_router(loads.router, prefix="/api")
+app.include_router(offers.router, prefix="/api")
+app.include_router(carriers.router, prefix="/api")
+app.include_router(calls.router, prefix="/api")
+app.include_router(metrics.router, prefix="/api")

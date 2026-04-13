@@ -26,9 +26,10 @@ htmlcov/
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
-.terraform.lock.hcl
+*.tfplan
 crash.log
 crash.*.log
+# Note: .terraform.lock.hcl IS committed so everyone gets the same provider versions
 
 # Streamlit
 .streamlit/secrets.toml

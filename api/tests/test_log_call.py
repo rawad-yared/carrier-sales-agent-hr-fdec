@@ -23,7 +23,7 @@ def _payload(**overrides):
 
 
 def test_log_call_happy_path_creates_row(client):
-    r = client.post("/log-call", json=_payload(), headers=AUTH)
+    r = client.post("/api/log-call", json=_payload(), headers=AUTH)
     assert r.status_code == 201
     body = r.json()
     assert body["status"] == "logged"
@@ -31,12 +31,12 @@ def test_log_call_happy_path_creates_row(client):
 
 
 def test_log_call_is_idempotent_by_session_id(client):
-    r1 = client.post("/log-call", json=_payload(session_id="sess-dup"), headers=AUTH)
+    r1 = client.post("/api/log-call", json=_payload(session_id="sess-dup"), headers=AUTH)
     assert r1.status_code == 201
     call_id = r1.json()["call_id"]
 
     r2 = client.post(
-        "/log-call",
+        "/api/log-call",
         json=_payload(session_id="sess-dup", final_price=2500.00),
         headers=AUTH,
     )
@@ -48,7 +48,7 @@ def test_log_call_is_idempotent_by_session_id(client):
 
 def test_log_call_persists_duration_seconds(client):
     r = client.post(
-        "/log-call",
+        "/api/log-call",
         json=_payload(
             session_id="sess-dur",
             started_at="2026-04-13T14:00:00Z",
@@ -62,19 +62,19 @@ def test_log_call_persists_duration_seconds(client):
 
 
 def test_log_call_rejects_bad_outcome(client):
-    r = client.post("/log-call", json=_payload(outcome="not_a_real_outcome"), headers=AUTH)
+    r = client.post("/api/log-call", json=_payload(outcome="not_a_real_outcome"), headers=AUTH)
     assert r.status_code == 422  # Pydantic Literal validation
 
 
 def test_log_call_rejects_bad_sentiment(client):
-    r = client.post("/log-call", json=_payload(sentiment="hostile"), headers=AUTH)
+    r = client.post("/api/log-call", json=_payload(sentiment="hostile"), headers=AUTH)
     assert r.status_code == 422
 
 
 def test_log_call_minimal_fields(client):
     # Only the required fields; nullable fields omitted
     r = client.post(
-        "/log-call",
+        "/api/log-call",
         json={
             "session_id": "sess-min",
             "outcome": "no_match",
@@ -88,5 +88,5 @@ def test_log_call_minimal_fields(client):
 
 
 def test_log_call_requires_api_key(client):
-    r = client.post("/log-call", json=_payload())
+    r = client.post("/api/log-call", json=_payload())
     assert r.status_code == 401
