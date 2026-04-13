@@ -56,7 +56,7 @@ One row per completed call. Written by `/log-call`.
 | `negotiation_rounds` | `INTEGER NOT NULL DEFAULT 0` | |
 | `started_at` | `TIMESTAMPTZ NOT NULL` | |
 | `ended_at` | `TIMESTAMPTZ NOT NULL` | |
-| `duration_seconds` | `INTEGER GENERATED ALWAYS AS (EXTRACT(EPOCH FROM ended_at - started_at)::INT) STORED` | |
+| `duration_seconds` | `INTEGER` | computed by the application at insert time (`int((ended_at - started_at).total_seconds())`). Stored rather than generated so the schema is portable across SQLite-backed unit tests and Postgres production. |
 | `transcript` | `TEXT` | full conversation |
 | `extracted` | `JSONB` | HappyRobot-extracted structured data |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
