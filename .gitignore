@@ -51,3 +51,6 @@ Thumbs.db
 
 # Claude Code instructions (local only)
 CLAUDE.md
+
+# Local session continuity doc (not for the public repo)
+CONTEXT.md
