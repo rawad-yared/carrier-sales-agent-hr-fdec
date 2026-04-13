@@ -117,7 +117,7 @@ cd api
 python -m pytest tests/
 ```
 
-**68 tests** covering negotiation policy (all 4 docs/NEGOTIATION.md worked examples verbatim), endpoint happy paths, 401 auth failures, rate limiting, FMCSA mocking, and metrics aggregation.
+**73 tests** covering negotiation policy (all 4 docs/NEGOTIATION.md worked examples verbatim), endpoint happy paths, 401 auth failures, rate limiting, FMCSA mocking, metrics aggregation, and defensive coercion for LLM-originated tool-call payloads (number-to-string, flexible datetime, transcript array flattening).
 
 ---
 
@@ -183,5 +183,7 @@ The `docs/` directory is the source of truth for what the system should do; the 
 | 2 | Full API (verify-carrier, evaluate-offer, log-call, calls, metrics) + rate limiter | ✅ |
 | 3 | Ops + Exec dashboard tabs with Plotly charts | ✅ |
 | 4 | Terraform deploy to AWS + HTTPS at carrier-sales-demo.com | ✅ |
-| 5 | HappyRobot workflow authoring (in-platform) | in progress |
+| 5 | HappyRobot workflow authoring (in-platform) | 🟡 agent + tools live, publish + polish pending |
 | 6 | Deliverables (email, Acme proposal, demo video) | pending |
+
+Phase 5 progress detail: voice agent configured, all 4 tools wired and firing against the production backend, full call flow proven end-to-end (greet → verify → search → pitch → negotiate → transfer → post-call extract → log). A real web call completed an entire 3-round negotiation, landed on the Ops tab with transcript, MC number, carrier name, load ID, agreed price, and rounds all populated. Remaining: prompt polish (MC number readback, guardrails), workflow publish + share link, agent voice/LLM final tuning.
