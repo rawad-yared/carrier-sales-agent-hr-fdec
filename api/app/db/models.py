@@ -111,7 +111,11 @@ class Call(Base):
 class Negotiation(Base):
     __tablename__ = "negotiations"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer(), "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
     load_id: Mapped[str] = mapped_column(Text, ForeignKey("loads.load_id"), nullable=False)
     round_number: Mapped[int] = mapped_column(Integer, nullable=False)

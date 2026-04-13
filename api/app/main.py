@@ -60,7 +60,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-from app.routers import health, loads  # noqa: E402
+from app.routers import health, loads, offers  # noqa: E402
 
 app.include_router(health.router)
 app.include_router(loads.router)
+app.include_router(offers.router)

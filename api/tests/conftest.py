@@ -12,7 +12,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from app.db.models import Load  # noqa: E402
+from app.db.models import Load, Negotiation  # noqa: E402
 from app.deps import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -28,6 +28,7 @@ def engine():
         future=True,
     )
     Load.__table__.create(eng)
+    Negotiation.__table__.create(eng)
     yield eng
     eng.dispose()
 
