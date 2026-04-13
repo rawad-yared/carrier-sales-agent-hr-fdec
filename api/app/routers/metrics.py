@@ -53,8 +53,10 @@ def metrics_summary(
     for name, count in sentiment_rows:
         sentiment[name] = count
 
-    booked_count = outcomes["booked"]
-    acceptance_rate = (booked_count / total) if total > 0 else 0.0
+    # acceptance_rate per docs/DASHBOARD.md: booked / (booked + carrier_declined + broker_declined)
+    # — the fraction of calls that reached a negotiation decision and ended in agreement.
+    denom = outcomes["booked"] + outcomes["carrier_declined"] + outcomes["broker_declined"]
+    acceptance_rate = (outcomes["booked"] / denom) if denom > 0 else 0.0
 
     avg_rounds_raw = db.execute(
         select(func.avg(Call.negotiation_rounds)).where(Call.started_at >= since)

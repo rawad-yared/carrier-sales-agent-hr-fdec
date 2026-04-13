@@ -1,68 +1,31 @@
 import httpx
-import pandas as pd
 import streamlit as st
 
-from client import ApiClient
+import client
+import exec_tab
+import ops
 
-st.set_page_config(page_title="Carrier Sales — Ops", layout="wide")
-st.title("Carrier Sales — Ops")
-st.caption("Phase 1 stub — proves end-to-end integration: dashboard → API → Postgres.")
+st.set_page_config(
+    page_title="Carrier Sales — Broker Console",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-client = ApiClient()
-
-with st.sidebar:
-    st.header("Filters")
-    origin = st.text_input("Origin contains")
-    destination = st.text_input("Destination contains")
-    equipment = st.selectbox(
-        "Equipment",
-        options=["", "Dry Van", "Reefer", "Flatbed", "Power Only"],
-        index=0,
-    )
-    max_results = st.slider("Max results", min_value=1, max_value=20, value=10)
+st.title("Carrier Sales — Broker Console")
+st.caption("HappyRobot-powered inbound carrier agent. Live call feed and aggregate metrics.")
 
 try:
     health = client.health()
-    st.success(f"API health: {health.get('status')}")
-except httpx.HTTPError as e:
-    st.error(f"API unreachable: {e}")
+    status = health.get("status", "unknown")
+    st.caption(f"API: **{status}** · base URL `{client.BASE_URL}`")
+except httpx.HTTPError as exc:
+    st.error(f"API unreachable at {client.BASE_URL}: {exc}")
     st.stop()
 
-st.subheader("Available loads")
+ops_pane, exec_pane = st.tabs(["Ops", "Exec"])
 
-body: dict = {"max_results": max_results}
-if origin:
-    body["origin"] = origin
-if destination:
-    body["destination"] = destination
-if equipment:
-    body["equipment_type"] = equipment
+with ops_pane:
+    ops.render()
 
-try:
-    result = client.search_loads(body)
-except httpx.HTTPError as e:
-    st.error(f"Failed to fetch loads: {e}")
-    st.stop()
-
-loads = result.get("results", [])
-st.metric("Matching loads", result.get("count", 0))
-
-if loads:
-    df = pd.DataFrame(loads)
-    display_cols = [
-        "load_id",
-        "origin",
-        "destination",
-        "pickup_datetime",
-        "equipment_type",
-        "loadboard_rate",
-        "miles",
-        "commodity_type",
-    ]
-    st.dataframe(
-        df[[c for c in display_cols if c in df.columns]],
-        use_container_width=True,
-        hide_index=True,
-    )
-else:
-    st.info("No loads match the current filters.")
+with exec_pane:
+    exec_tab.render()

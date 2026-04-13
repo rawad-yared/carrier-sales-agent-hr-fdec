@@ -56,7 +56,9 @@ def test_metrics_counts_outcomes_and_sentiments(client):
     assert body["sentiment"]["positive"] == 2
     assert body["sentiment"]["negative"] == 1
     assert body["sentiment"]["neutral"] == 1
-    assert body["acceptance_rate"] == 0.5  # 2 booked / 4 total
+    # acceptance_rate denominator = booked + carrier_declined + broker_declined = 2+1+0 = 3
+    # 2 booked / 3 = 0.666...
+    assert abs(body["acceptance_rate"] - (2 / 3)) < 1e-9
 
 
 def test_metrics_computes_delta_from_loadboard(client):

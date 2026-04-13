@@ -29,7 +29,7 @@ class SearchLoadsRequest(BaseModel):
     destination: str | None = None
     equipment_type: str | None = None
     pickup_date: date | None = None
-    max_results: int = Field(default=3, ge=1, le=20)
+    max_results: int = Field(default=3, ge=1, le=500)
 
 
 class SearchLoadsResponse(BaseModel):
