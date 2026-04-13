@@ -42,7 +42,6 @@ terraform apply
 ```
 carrier-sales-agent-hr-fdec/
 ├── README.md                 ← you are here
-├── CLAUDE.md                 ← instructions for Claude Code
 ├── docs/                     ← specs and design docs
 ├── api/                      ← FastAPI backend
 ├── dashboard/                ← Streamlit dashboard
