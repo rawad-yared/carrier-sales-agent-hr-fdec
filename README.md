@@ -153,7 +153,6 @@ carrier-sales-agent-hr-fdec/
 ├── infra/                    ← Terraform modules
 ├── data/                     ← seed loads (loads.json)
 ├── happyrobot/               ← HappyRobot workflow artifacts (tool defs, prompts)
-├── deliverables/             ← email, Acme proposal, video link
 ├── scripts/                  ← bootstrap, build-and-push, synthetic seeder
 └── docker-compose.yml
 ```
