@@ -4,10 +4,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.models import Call, Load
 from app.deps import get_db, require_api_key
 from app.schemas.calls import Outcome, Sentiment
-from app.schemas.metrics import MetricsSummaryResponse
+from app.schemas.metrics import (
+    EquipmentBreakdownRow,
+    MetricsByEquipmentResponse,
+    MetricsSummaryResponse,
+)
 
 router = APIRouter(tags=["metrics"], dependencies=[Depends(require_api_key)])
 
@@ -81,6 +86,53 @@ def metrics_summary(
         avg_delta = 0.0
         total_revenue = 0.0
 
+    # Agent impact — call time the agent handled without a human rep.
+    # Null duration_seconds rows contribute 0 (treated as unmeasured, not
+    # missing value — see /log-call reconciliation in calls.py).
+    total_duration = db.execute(
+        select(func.coalesce(func.sum(Call.duration_seconds), 0)).where(
+            Call.started_at >= since
+        )
+    ).scalar_one()
+    total_duration = int(total_duration or 0)
+    rep_hours_saved = total_duration / 3600.0
+    labor_rate = get_settings().labor_cost_per_hour_usd
+    labor_saved = rep_hours_saved * labor_rate
+
+    # Recoverable declines — carrier walked on price but left on a good tone.
+    # These are the single best human-rep callback targets.
+    recoverable = db.execute(
+        select(func.count())
+        .select_from(Call)
+        .where(
+            Call.started_at >= since,
+            Call.outcome == "carrier_declined",
+            Call.sentiment.in_(("positive", "neutral")),
+        )
+    ).scalar_one()
+
+    # Acceptance rate split by sentiment — turns the aimless sentiment
+    # distribution into an actionable signal ("negative-sentiment calls
+    # close at 8% vs positive at 67% — tone recovery matters").
+    sentiment_decision_rows = db.execute(
+        select(Call.sentiment, Call.outcome, func.count())
+        .where(
+            Call.started_at >= since,
+            Call.outcome.in_(("booked", "carrier_declined", "broker_declined")),
+        )
+        .group_by(Call.sentiment, Call.outcome)
+    ).all()
+    per_sent_booked: dict[str, int] = {s: 0 for s in ALL_SENTIMENTS}
+    per_sent_decisional: dict[str, int] = {s: 0 for s in ALL_SENTIMENTS}
+    for sent_name, outcome_name, cnt in sentiment_decision_rows:
+        per_sent_decisional[sent_name] = per_sent_decisional.get(sent_name, 0) + cnt
+        if outcome_name == "booked":
+            per_sent_booked[sent_name] = per_sent_booked.get(sent_name, 0) + cnt
+    acceptance_by_sentiment = {
+        s: (per_sent_booked[s] / per_sent_decisional[s]) if per_sent_decisional[s] > 0 else 0.0
+        for s in ALL_SENTIMENTS
+    }
+
     return MetricsSummaryResponse(
         total_calls=total,
         outcomes=outcomes,
@@ -89,4 +141,86 @@ def metrics_summary(
         avg_negotiation_rounds=avg_rounds,
         avg_delta_from_loadboard=avg_delta,
         total_booked_revenue=total_revenue,
+        total_duration_seconds=total_duration,
+        estimated_rep_hours_saved=rep_hours_saved,
+        estimated_labor_cost_saved_usd=labor_saved,
+        labor_cost_per_hour_usd=labor_rate,
+        recoverable_declines=int(recoverable or 0),
+        acceptance_rate_by_sentiment=acceptance_by_sentiment,
     )
+
+
+@router.get("/metrics/by-equipment", response_model=MetricsByEquipmentResponse)
+def metrics_by_equipment(
+    since: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> MetricsByEquipmentResponse:
+    """Per-equipment acceptance and margin — where is the agent winning?
+
+    Joins calls → loads on load_id, groups by equipment_type. Calls with no
+    resolved load (e.g., outcome=no_match, no load_id set) are skipped —
+    they have no equipment to attribute.
+    """
+    if since is None:
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+
+    rows = db.execute(
+        select(
+            Load.equipment_type,
+            Call.outcome,
+            Call.final_price,
+            Call.negotiation_rounds,
+            Load.loadboard_rate,
+        )
+        .join(Load, Call.load_id == Load.load_id)
+        .where(Call.started_at >= since)
+    ).all()
+
+    buckets: dict[str, dict] = {}
+    for equipment, outcome, final_price, rounds, loadboard_rate in rows:
+        b = buckets.setdefault(
+            equipment,
+            {
+                "calls": 0,
+                "booked": 0,
+                "decisional": 0,
+                "deltas": [],
+                "booked_rounds": [],
+                "revenue": 0.0,
+            },
+        )
+        b["calls"] += 1
+        if outcome in ("booked", "carrier_declined", "broker_declined"):
+            b["decisional"] += 1
+        if outcome == "booked":
+            b["booked"] += 1
+            if final_price is not None and loadboard_rate is not None and float(loadboard_rate) > 0:
+                fp = float(final_price)
+                lr = float(loadboard_rate)
+                b["deltas"].append((fp - lr) / lr)
+                b["revenue"] += fp
+            if rounds is not None and rounds > 0:
+                b["booked_rounds"].append(int(rounds))
+
+    results: list[EquipmentBreakdownRow] = []
+    for equipment, b in sorted(buckets.items()):
+        acceptance = (b["booked"] / b["decisional"]) if b["decisional"] > 0 else 0.0
+        avg_delta = (sum(b["deltas"]) / len(b["deltas"])) if b["deltas"] else 0.0
+        avg_rounds_to_book = (
+            sum(b["booked_rounds"]) / len(b["booked_rounds"])
+            if b["booked_rounds"]
+            else 0.0
+        )
+        results.append(
+            EquipmentBreakdownRow(
+                equipment_type=equipment,
+                calls=b["calls"],
+                booked=b["booked"],
+                acceptance_rate=float(acceptance),
+                avg_delta_from_loadboard=float(avg_delta),
+                avg_rounds_to_book=float(avg_rounds_to_book),
+                booked_revenue=float(b["revenue"]),
+            )
+        )
+
+    return MetricsByEquipmentResponse(results=results)

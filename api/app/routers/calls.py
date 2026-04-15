@@ -1,13 +1,20 @@
 import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Call
+from app.db.models import Call, Negotiation
 from app.deps import get_db, require_api_key
-from app.schemas.calls import CallOut, CallsListResponse, LogCallRequest, LogCallResponse
+from app.schemas.calls import (
+    CallNegotiationsResponse,
+    CallOut,
+    CallsListResponse,
+    LogCallRequest,
+    LogCallResponse,
+    NegotiationRoundOut,
+)
 
 router = APIRouter(tags=["calls"], dependencies=[Depends(require_api_key)])
 
@@ -143,4 +150,37 @@ def list_calls(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/calls/{call_id}/negotiations", response_model=CallNegotiationsResponse)
+def call_negotiations(
+    call_id: str,
+    db: Session = Depends(get_db),
+) -> CallNegotiationsResponse:
+    """Return the per-round negotiation history for a call.
+
+    Joins `calls` → `negotiations` via `session_id` (negotiations are keyed
+    by session_id because /evaluate-offer is invoked before /log-call).
+    Used by the Ops drill-down to render the offer/counter/reasoning timeline
+    that proves the agent + policy + dashboard loop.
+    """
+    call = db.execute(select(Call).where(Call.call_id == call_id)).scalar_one_or_none()
+    if call is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "call_not_found", "message": f"no call with id {call_id}"},
+        )
+
+    rows = db.execute(
+        select(Negotiation)
+        .where(Negotiation.session_id == call.session_id)
+        .order_by(Negotiation.round_number.asc(), Negotiation.id.asc())
+    ).scalars().all()
+
+    return CallNegotiationsResponse(
+        call_id=call.call_id,
+        session_id=call.session_id,
+        load_id=call.load_id,
+        rounds=[NegotiationRoundOut.model_validate(r) for r in rows],
     )

@@ -66,6 +66,34 @@ def search_loads_all() -> dict:
     return r.json()
 
 
+@st.cache_data(ttl=30)
+def call_negotiations(call_id: str) -> dict:
+    """Fetch the per-round negotiation timeline for a single call."""
+    r = httpx.get(
+        f"{BASE_URL}/api/calls/{call_id}/negotiations",
+        headers=_headers(),
+        timeout=_TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+@st.cache_data(ttl=60)
+def metrics_by_equipment(since: datetime | None = None) -> dict:
+    params: dict = {}
+    since_iso = _iso(since)
+    if since_iso:
+        params["since"] = since_iso
+    r = httpx.get(
+        f"{BASE_URL}/api/metrics/by-equipment",
+        params=params,
+        headers=_headers(),
+        timeout=_TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 @st.cache_data(ttl=60)
 def metrics_summary(since: datetime | None = None) -> dict:
     params: dict = {}

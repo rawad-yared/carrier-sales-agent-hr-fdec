@@ -6,13 +6,17 @@ import exec_tab
 import ops
 
 st.set_page_config(
-    page_title="Carrier Sales — Broker Console",
+    page_title="Acme Logistics — Broker Console",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.title("Carrier Sales — Broker Console")
-st.caption("HappyRobot-powered inbound carrier agent. Live call feed and aggregate metrics.")
+st.title("Broker Console — Acme Logistics")
+st.caption(
+    "Your inbound carrier agent's daily performance and where it needs attention. "
+    "**Ops** — audit live calls and surface recoverable declines. "
+    "**Exec** — where the agent is winning, where to tune it, and what it's worth."
+)
 
 try:
     health = client.health()

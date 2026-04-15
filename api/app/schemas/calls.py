@@ -137,3 +137,21 @@ class CallsListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class NegotiationRoundOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    round_number: int
+    carrier_offer: Decimal
+    action: str
+    counter_price: Decimal | None = None
+    reasoning: str | None = None
+    created_at: datetime
+
+
+class CallNegotiationsResponse(BaseModel):
+    call_id: str
+    session_id: str
+    load_id: str | None = None
+    rounds: list[NegotiationRoundOut]

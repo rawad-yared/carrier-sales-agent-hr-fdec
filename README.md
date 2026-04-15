@@ -51,7 +51,7 @@ See `docs/ARCHITECTURE.md` for the full system diagram and component breakdown.
 
 ## API
 
-Six endpoints, path-prefixed with `/api`. All require `X-API-Key` except `/health`.
+Nine endpoints, path-prefixed with `/api`. All require `X-API-Key` except `/health`.
 
 | Endpoint | Purpose |
 |---|---|
@@ -61,7 +61,9 @@ Six endpoints, path-prefixed with `/api`. All require `X-API-Key` except `/healt
 | `POST /api/evaluate-offer` | Apply the locked 3-round negotiation policy; pulls prior-round history by `session_id` |
 | `POST /api/log-call` | Persist a completed call with outcome, sentiment, negotiation rounds, transcript |
 | `GET /api/calls` | Paginated read with outcome + since filters |
-| `GET /api/metrics/summary` | Aggregated KPIs (acceptance rate, avg margin vs loadboard, booked revenue) |
+| `GET /api/calls/{call_id}/negotiations` | Per-round offer/counter/reasoning timeline for a specific call — what the dashboard renders in the Ops drill-down to prove the agent→policy→dashboard loop |
+| `GET /api/metrics/summary` | Aggregated KPIs — acceptance rate, avg margin vs loadboard, booked revenue, **estimated rep hours saved**, **estimated labor cost saved**, **recoverable declines**, **acceptance rate by sentiment** |
+| `GET /api/metrics/by-equipment` | Per-equipment-type breakdown — calls, booked, acceptance rate, avg margin, avg rounds to book, revenue — the single highest-signal drill-down for a sales manager |
 
 Full contract in `docs/API.md`. OpenAPI schema served at `/docs` on the deployed API.
 
@@ -83,11 +85,16 @@ See `docs/NEGOTIATION.md` for the exact rules and `api/app/services/negotiation.
 
 ## Dashboard
 
-Two tabs, both read from `/api/calls` and `/api/metrics/summary` with Streamlit's `@st.cache_data` for polling.
+A decision tool for two users: a floor manager on the **Ops** tab and a commercial lead on the **Exec** tab. Every chart is captioned with the decision it drives, not just what it shows. Both tabs read from the same Postgres the agent writes to — there is no separate analytics pipeline, no mock data, no stitched-together components.
 
-**Ops** — live broker console: calls today / active now / booked today / acceptance today KPIs, call feed table with color-coded outcome badges, drill-down panel showing transcript + HappyRobot-extracted data.
+**Ops — live broker console.** Calls today, active now, booked today, acceptance today, and *recoverable declines* (carriers who walked on price but left on good terms — prime human-rep callback targets). One-click "Recoverable declines" quick filter. Filterable call feed with color-coded outcome badges. Drill into any call to see the **negotiation timeline** — one row per `/evaluate-offer` tool call the agent made during the conversation, with the exact reasoning the policy returned ("offer above floor but below target, countering at midpoint"). Full transcript and HappyRobot post-call extracted fields also visible in the drill-down.
 
-**Exec** — aggregate view: total calls / booked / acceptance rate / avg margin vs loadboard / revenue KPIs, plus 6 Plotly charts (volume over time stacked by outcome, outcome donut, sentiment donut, avg rounds by outcome, delta-from-loadboard histogram, top lanes booked).
+**Exec — program overview.** Opens with a **hero agent-impact banner**: "In the last 30 days the agent handled N calls, booked $X in revenue at +Y% vs loadboard, and saved an estimated Z hours of rep time (≈ $W at $45/hr)." Below that:
+
+- **Where the agent is winning** — acceptance rate and avg margin by equipment type, side by side, with a decision caption pointing to the best/worst type. Tells a sales manager which equipment segments to double down on and which to tune.
+- **Tone vs. close rate** — acceptance rate split by call sentiment (replaces the aimless sentiment donut), with a recoverable-declines callout. Turns sentiment from vanity into an actionable tone-recovery signal.
+- **Volume & outcomes** — stacked-by-outcome timeline and outcome mix donut.
+- **Avg rounds by outcome**, **margin vs loadboard histogram**, and **top booked lanes** — each with a bold *Decision:* caption explaining what a drop or shift in the chart should trigger.
 
 Spec in `docs/DASHBOARD.md`.
 
@@ -117,7 +124,13 @@ cd api
 python -m pytest tests/
 ```
 
-**73 tests** covering negotiation policy (all 4 docs/NEGOTIATION.md worked examples verbatim), endpoint happy paths, 401 auth failures, rate limiting, FMCSA mocking, metrics aggregation, and defensive coercion for LLM-originated tool-call payloads (number-to-string, flexible datetime, transcript array flattening).
+**85 tests** covering negotiation policy (all 4 docs/NEGOTIATION.md worked examples verbatim), endpoint happy paths, 401 auth failures, rate limiting, FMCSA mocking, metrics aggregation (incl. rep-hours-saved, recoverable declines, acceptance-by-sentiment, per-equipment breakdown, and the per-call negotiation timeline), and defensive coercion for LLM-originated tool-call payloads (number-to-string, flexible datetime, transcript array flattening).
+
+If the local environment has a pytest plugin conflict (common on anaconda boxes), run with autoloading disabled:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/
+```
 
 ---
 

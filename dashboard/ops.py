@@ -34,12 +34,24 @@ def _parse_iso(value: str) -> datetime:
 
 def render() -> None:
     st.header("Ops — Live Call Feed")
+    st.caption(
+        "Every inbound call, ranked newest first. Use the filters to audit "
+        "active calls or surface recoverable declines — carriers who walked "
+        "on price but left on good terms and are worth a human rep callback."
+    )
 
-    top_bar = st.columns([4, 1])
+    top_bar = st.columns([3, 1, 1])
     with top_bar[1]:
+        if st.button("📞 Recoverable declines", help="Carrier declined + positive/neutral sentiment. Prime callback targets."):
+            st.session_state["ops_preset_recoverable"] = True
+            st.session_state["ops_outcome_filter"] = ["carrier_declined"]
+            st.session_state["ops_sentiment_filter"] = ["positive", "neutral"]
+            st.rerun()
+    with top_bar[2]:
         if st.button("🔄 Refresh", help="Clear cache and re-fetch"):
             client.list_calls.clear()
             client.metrics_summary.clear()
+            st.session_state.pop("ops_preset_recoverable", None)
             st.rerun()
 
     with st.sidebar:
@@ -47,15 +59,23 @@ def render() -> None:
         outcome_filter = st.multiselect(
             "Outcome",
             options=list(OUTCOME_BADGES.keys()),
-            default=[],
+            default=st.session_state.get("ops_outcome_filter", []),
+            key="ops_outcome_filter",
         )
         sentiment_filter = st.multiselect(
             "Sentiment",
             options=["positive", "neutral", "negative"],
-            default=[],
+            default=st.session_state.get("ops_sentiment_filter", []),
+            key="ops_sentiment_filter",
         )
         default_since = date.today() - timedelta(days=7)
         date_from = st.date_input("Since", value=default_since)
+        if st.session_state.get("ops_preset_recoverable"):
+            st.success(
+                "**Recoverable declines** preset is active. "
+                "Showing calls where the agent lost on price but sentiment "
+                "stayed positive or neutral."
+            )
 
     since_dt = datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc)
 
@@ -104,11 +124,25 @@ def _render_kpis(calls: list[dict]) -> None:
         len(booked_today) / len(decisional_today) if decisional_today else 0.0
     )
 
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Calls today", len(calls_today))
-    k2.metric("Active now", len(active_now), help="Started in last 2 min")
-    k3.metric("Booked today", len(booked_today))
-    k4.metric("Acceptance today", f"{acceptance_today:.0%}")
+    recoverable_today = [
+        c for c in calls_today
+        if c["outcome"] == "carrier_declined" and c["sentiment"] in ("positive", "neutral")
+    ]
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Calls today", len(calls_today), help="All inbound calls since 00:00 UTC today.")
+    k2.metric("Active now", len(active_now), help="Calls that started in the last 2 minutes.")
+    k3.metric("Booked today", len(booked_today), help="Calls today that ended in a confirmed booking.")
+    k4.metric(
+        "Acceptance today",
+        f"{acceptance_today:.0%}",
+        help="Booked ÷ (booked + declined). Excludes no-match and ineligible carriers — the true closing rate.",
+    )
+    k5.metric(
+        "Recoverable today",
+        len(recoverable_today),
+        help="Carrier declined on price but sentiment stayed positive/neutral. Use the filter button above to list them.",
+    )
 
 
 def _render_feed_table(calls: list[dict]) -> None:
@@ -173,8 +207,60 @@ def _render_drill_down(calls: list[dict]) -> None:
         f"load `{call.get('load_id') or '—'}`"
     )
 
+    _render_negotiation_timeline(call)
+
     with st.expander("Transcript", expanded=False):
         st.text(call.get("transcript") or "(no transcript)")
 
     with st.expander("Extracted data (HappyRobot post-call node)", expanded=False):
         st.json(call.get("extracted") or {})
+
+
+ACTION_BADGES = {
+    "accept": "✅ accept",
+    "counter": "↩️ counter",
+    "reject": "⛔ reject",
+}
+
+
+def _fmt_money(value) -> str:
+    if value is None:
+        return "—"
+    try:
+        return f"${float(value):,.0f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _render_negotiation_timeline(call: dict) -> None:
+    """Show the per-round offer/counter/reasoning trail for this call.
+
+    This is the visible proof of the agent → policy → dashboard loop:
+    each row is one /evaluate-offer call the agent made during the
+    conversation, with the exact reasoning the policy returned.
+    """
+    st.markdown("**Negotiation timeline** — the agent's tool calls to `/evaluate-offer` during this call.")
+    try:
+        payload = client.call_negotiations(call["call_id"])
+    except httpx.HTTPError as exc:
+        st.caption(f"Could not load negotiation rounds: {exc}")
+        return
+
+    rounds = payload.get("rounds", [])
+    if not rounds:
+        st.caption("No negotiation rounds recorded for this call (no offers evaluated).")
+        return
+
+    rows = []
+    for r in rounds:
+        rows.append(
+            {
+                "Round": r.get("round_number"),
+                "Carrier offer": _fmt_money(r.get("carrier_offer")),
+                "Broker action": ACTION_BADGES.get(r.get("action"), r.get("action") or "—"),
+                "Counter": _fmt_money(r.get("counter_price")),
+                "Reasoning": r.get("reasoning") or "—",
+            }
+        )
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)

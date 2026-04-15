@@ -19,6 +19,11 @@ class Settings(BaseSettings):
 
     loads_json_path: str = Field("/app/data/loads.json", alias="LOADS_JSON_PATH")
 
+    # Labor-cost assumption used by /metrics/summary to estimate rep time
+    # saved. Defaults to a conservative loaded cost for a carrier sales rep
+    # ($45/hr including benefits and overhead). Tunable via env var.
+    labor_cost_per_hour_usd: float = Field(45.0, alias="LABOR_COST_PER_HOUR_USD")
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -4,12 +4,12 @@ The six things we owe HappyRobot. Track status here as we ship.
 
 | # | Deliverable | Location | Status |
 |---|---|---|---|
-| 1 | Email to Carlos Becker (c.becker@happyrobot.ai, recruiter in CC) | `deliverables/email.md` | ⬜ TODO |
-| 2 | Build description doc for "Acme Logistics" | `deliverables/acme-logistics-proposal.md` | ⬜ TODO |
-| 3 | Deployed dashboard URL | `https://<custom-domain>/` | ⬜ TODO |
-| 4 | Code repo link | This repo (paste URL when published) | ⬜ TODO |
-| 5 | HappyRobot workflow link | `docs/HAPPYROBOT.md` bottom | ⬜ TODO |
-| 6 | 5-min video (setup, demo, dashboard) | `deliverables/video.md` | ⬜ TODO (user records) |
+| 1 | Email to Carlos Becker (c.becker@happyrobot.ai, recruiter in CC) | `deliverables/email.md` | ✅ drafted — user sends |
+| 2 | Build description doc for "Acme Logistics" | `deliverables/acme-logistics-proposal.md` | ✅ drafted (324 lines) |
+| 3 | Deployed dashboard URL | `https://carrier-sales-demo.com/` | ✅ live (HTTPS + ACM + ALB) |
+| 4 | Code repo link | This repo (paste URL when published) | ⬜ user publishes |
+| 5 | HappyRobot workflow link | `docs/HAPPYROBOT.md` bottom | ✅ workflow built, live, wired to production API — user pastes share link |
+| 6 | 5-min video (setup, demo, dashboard) | `deliverables/video.md` | ✅ script finalized — user records |
 
 ## Additional considerations covered
 

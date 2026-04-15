@@ -96,3 +96,47 @@ def test_metrics_respects_since_filter(client):
 def test_metrics_requires_api_key(client):
     r = client.get("/api/metrics/summary")
     assert r.status_code == 401
+
+
+def test_metrics_rep_hours_and_labor_saved(client):
+    # Two booked calls with durations 5:00 and 3:00 = 480 seconds = 0.133 hrs
+    # At $45/hr default rate = ~$6.00 saved
+    _log(client, "d1", outcome="booked", final_price=2400.00)  # 5 min by default in helper
+    _log(client, "d2", outcome="booked", final_price=2400.00)
+
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    body = r.json()
+    assert body["total_duration_seconds"] == 600  # 2 × 5 min
+    assert abs(body["estimated_rep_hours_saved"] - (600 / 3600)) < 1e-9
+    assert body["labor_cost_per_hour_usd"] == 45.0
+    assert abs(body["estimated_labor_cost_saved_usd"] - (600 / 3600 * 45)) < 1e-9
+
+
+def test_metrics_recoverable_declines(client):
+    # Recoverable: declined + positive/neutral. Not recoverable: declined + negative.
+    _log(client, "rec1", outcome="carrier_declined", sentiment="positive", load_id=None)
+    _log(client, "rec2", outcome="carrier_declined", sentiment="neutral", load_id=None)
+    _log(client, "lost", outcome="carrier_declined", sentiment="negative", load_id=None)
+    _log(client, "booked", outcome="booked", sentiment="positive", final_price=2400.00)
+
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    body = r.json()
+    assert body["recoverable_declines"] == 2
+
+
+def test_metrics_acceptance_by_sentiment(client):
+    # Positive: 2 booked, 1 declined → 2/3
+    # Neutral: 1 booked → 1/1 = 1.0
+    # Negative: 0 booked, 1 declined → 0.0
+    _log(client, "p1", outcome="booked", sentiment="positive", final_price=2400.00)
+    _log(client, "p2", outcome="booked", sentiment="positive", final_price=2400.00)
+    _log(client, "p3", outcome="carrier_declined", sentiment="positive", load_id=None)
+    _log(client, "nu1", outcome="booked", sentiment="neutral", final_price=2400.00)
+    _log(client, "ng1", outcome="carrier_declined", sentiment="negative", load_id=None)
+
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    body = r.json()
+    by_sent = body["acceptance_rate_by_sentiment"]
+    assert abs(by_sent["positive"] - (2 / 3)) < 1e-9
+    assert by_sent["neutral"] == 1.0
+    assert by_sent["negative"] == 0.0
