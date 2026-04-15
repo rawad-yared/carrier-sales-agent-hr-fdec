@@ -172,18 +172,3 @@ Recommended reading order:
 6. **`docs/SECURITY.md`** — what's PoC-grade vs production-grade
 
 The `docs/` directory is the source of truth for what the system should do; the `api/`, `dashboard/`, and `infra/` directories are how it actually does it.
-
----
-
-## Status
-
-| Phase | Description | Status |
-|---|---|---|
-| 1 | Vertical slice — db, search-loads, dashboard stub | ✅ |
-| 2 | Full API (verify-carrier, evaluate-offer, log-call, calls, metrics) + rate limiter | ✅ |
-| 3 | Ops + Exec dashboard tabs with Plotly charts | ✅ |
-| 4 | Terraform deploy to AWS + HTTPS at carrier-sales-demo.com | ✅ |
-| 5 | HappyRobot workflow authoring (in-platform) | 🟡 agent + tools live, publish + polish pending |
-| 6 | Deliverables (email, Acme proposal, demo video) | pending |
-
-Phase 5 progress detail: voice agent configured, all 4 tools wired and firing against the production backend, full call flow proven end-to-end (greet → verify → search → pitch → negotiate → transfer → post-call extract → log). A real web call completed an entire 3-round negotiation, landed on the Ops tab with transcript, MC number, carrier name, load ID, agreed price, and rounds all populated. Remaining: prompt polish (MC number readback, guardrails), workflow publish + share link, agent voice/LLM final tuning.
