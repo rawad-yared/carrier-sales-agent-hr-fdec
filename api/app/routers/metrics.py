@@ -31,18 +31,31 @@ ALL_SENTIMENTS: tuple[str, ...] = ("positive", "neutral", "negative")
 @router.get("/metrics/summary", response_model=MetricsSummaryResponse)
 def metrics_summary(
     since: datetime | None = Query(default=None),
+    include_errors: bool = Query(
+        default=False,
+        description=(
+            "Include outcome='error' calls in aggregates. Defaults to False so "
+            "spurious failures (e.g. browser tab-switch mid-call) do not inflate "
+            "total_calls or estimated_rep_hours_saved on the demo dashboard. Set "
+            "true for raw diagnostic counts."
+        ),
+    ),
     db: Session = Depends(get_db),
 ) -> MetricsSummaryResponse:
     if since is None:
         since = datetime.now(timezone.utc) - timedelta(days=30)
 
+    base_filters = [Call.started_at >= since]
+    if not include_errors:
+        base_filters.append(Call.outcome != "error")
+
     total = db.execute(
-        select(func.count()).select_from(Call).where(Call.started_at >= since)
+        select(func.count()).select_from(Call).where(*base_filters)
     ).scalar_one()
 
     outcome_rows = db.execute(
         select(Call.outcome, func.count())
-        .where(Call.started_at >= since)
+        .where(*base_filters)
         .group_by(Call.outcome)
     ).all()
     outcomes: dict[str, int] = {o: 0 for o in ALL_OUTCOMES}
@@ -51,7 +64,7 @@ def metrics_summary(
 
     sentiment_rows = db.execute(
         select(Call.sentiment, func.count())
-        .where(Call.started_at >= since)
+        .where(*base_filters)
         .group_by(Call.sentiment)
     ).all()
     sentiment: dict[str, int] = {s: 0 for s in ALL_SENTIMENTS}
@@ -64,7 +77,7 @@ def metrics_summary(
     acceptance_rate = (outcomes["booked"] / denom) if denom > 0 else 0.0
 
     avg_rounds_raw = db.execute(
-        select(func.avg(Call.negotiation_rounds)).where(Call.started_at >= since)
+        select(func.avg(Call.negotiation_rounds)).where(*base_filters)
     ).scalar()
     avg_rounds = float(avg_rounds_raw) if avg_rounds_raw is not None else 0.0
 
@@ -87,11 +100,13 @@ def metrics_summary(
         total_revenue = 0.0
 
     # Agent impact — call time the agent handled without a human rep.
-    # Null duration_seconds rows contribute 0 (treated as unmeasured, not
-    # missing value — see /log-call reconciliation in calls.py).
+    # Excludes outcome='error' even when include_errors=true, because an
+    # errored call would still need a human rep to recover — it isn't time
+    # the agent saved. Null duration_seconds rows contribute 0.
     total_duration = db.execute(
         select(func.coalesce(func.sum(Call.duration_seconds), 0)).where(
-            Call.started_at >= since
+            Call.started_at >= since,
+            Call.outcome != "error",
         )
     ).scalar_one()
     total_duration = int(total_duration or 0)
@@ -114,6 +129,8 @@ def metrics_summary(
     # Acceptance rate split by sentiment — turns the aimless sentiment
     # distribution into an actionable signal ("negative-sentiment calls
     # close at 8% vs positive at 67% — tone recovery matters").
+    # Decisional outcomes are intrinsically non-error so include_errors
+    # has no effect here; explicit for clarity.
     sentiment_decision_rows = db.execute(
         select(Call.sentiment, Call.outcome, func.count())
         .where(

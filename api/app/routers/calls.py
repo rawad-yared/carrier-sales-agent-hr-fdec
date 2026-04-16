@@ -129,6 +129,15 @@ def list_calls(
     offset: int = Query(default=0, ge=0),
     outcome: str | None = Query(default=None),
     since: datetime | None = Query(default=None),
+    include_errors: bool = Query(
+        default=False,
+        description=(
+            "Include outcome='error' calls. Defaults to False so the live feed "
+            "does not surface spurious failures (e.g. browser tab-switch mid-call) "
+            "during a demo. Set true for raw diagnostic listing, or pass "
+            "outcome=error to inspect them explicitly."
+        ),
+    ),
     db: Session = Depends(get_db),
 ) -> CallsListResponse:
     stmt = select(Call)
@@ -137,6 +146,11 @@ def list_calls(
     if outcome:
         stmt = stmt.where(Call.outcome == outcome)
         count_stmt = count_stmt.where(Call.outcome == outcome)
+    elif not include_errors:
+        # Hide error-outcome calls from the default feed. An explicit
+        # outcome=error filter still lets operators inspect them.
+        stmt = stmt.where(Call.outcome != "error")
+        count_stmt = count_stmt.where(Call.outcome != "error")
     if since:
         stmt = stmt.where(Call.started_at >= since)
         count_stmt = count_stmt.where(Call.started_at >= since)

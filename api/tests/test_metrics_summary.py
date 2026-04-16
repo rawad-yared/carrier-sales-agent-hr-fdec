@@ -124,6 +124,36 @@ def test_metrics_recoverable_declines(client):
     assert body["recoverable_declines"] == 2
 
 
+def test_metrics_excludes_error_outcomes_by_default(client):
+    """Tab-switch errors must not inflate total_calls or labor savings."""
+    _log(client, "ok1", outcome="booked", final_price=2400.00)
+    _log(client, "err", outcome="error", load_id=None, sentiment="neutral")
+
+    r = client.get("/api/metrics/summary?since=2020-01-01T00:00:00Z", headers=AUTH)
+    body = r.json()
+    assert body["total_calls"] == 1
+    assert body["outcomes"]["error"] == 0
+    # 1 booked × 5 min = 300s of agent-handled time. Error duration excluded.
+    assert body["total_duration_seconds"] == 300
+
+
+def test_metrics_includes_errors_when_flag_set(client):
+    """Diagnostic mode surfaces errors so an operator can chase them."""
+    _log(client, "ok", outcome="booked", final_price=2400.00)
+    _log(client, "err", outcome="error", load_id=None, sentiment="neutral")
+
+    r = client.get(
+        "/api/metrics/summary?since=2020-01-01T00:00:00Z&include_errors=true",
+        headers=AUTH,
+    )
+    body = r.json()
+    assert body["total_calls"] == 2
+    assert body["outcomes"]["error"] == 1
+    # Even with include_errors=true, hours_saved must NOT count the error
+    # — an errored call still needed a human, so no time was actually saved.
+    assert body["total_duration_seconds"] == 300
+
+
 def test_metrics_acceptance_by_sentiment(client):
     # Positive: 2 booked, 1 declined → 2/3
     # Neutral: 1 booked → 1/1 = 1.0

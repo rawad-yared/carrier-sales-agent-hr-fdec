@@ -104,8 +104,10 @@ def _make_call(
             f"{rounds} round(s) of negotiation, outcome {outcome}."
         ),
         "extracted": {
-            "equipment": random.choice(EQUIPMENT),
-            "current_location": random.choice(LOCATIONS),
+            "carrier_equipment": random.choice(EQUIPMENT),
+            # carrier_current_location matches the HappyRobot extraction
+            # schema and is what the dashboard's lane-gap panel reads.
+            "carrier_current_location": random.choice(LOCATIONS),
         },
     }
 
@@ -151,11 +153,13 @@ def _build_fixture() -> list[dict]:
             )
         )
 
-    # 3 no_match
-    for _ in range(3):
-        calls.append(
-            _make_call("no_match", "neutral", load_id=None, rounds=0, days_ago=random.randint(0, 14))
-        )
+    # 5 no_match — concentrated in Dallas/Atlanta so the lane-intel panel
+    # has a concrete sourcing recommendation to surface in the demo.
+    no_match_origins = ["Dallas, TX", "Dallas, TX", "Dallas, TX", "Atlanta, GA", "Atlanta, GA"]
+    for origin in no_match_origins:
+        call = _make_call("no_match", "neutral", load_id=None, rounds=0, days_ago=random.randint(0, 14))
+        call["extracted"]["carrier_current_location"] = origin
+        calls.append(call)
 
     # 2 carrier_ineligible
     for _ in range(2):

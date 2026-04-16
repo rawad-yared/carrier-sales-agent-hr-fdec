@@ -88,3 +88,37 @@ def test_list_calls_orders_by_started_at_desc(client):
 def test_list_calls_requires_api_key(client):
     r = client.get("/api/calls")
     assert r.status_code == 401
+
+
+def test_list_calls_excludes_error_outcome_by_default(client):
+    """Tab-switch errors from HappyRobot must not pollute the demo feed."""
+    _log(client, "ok1", outcome="booked")
+    _log(client, "ok2", outcome="no_match", sentiment="neutral")
+    _log(client, "err", outcome="error", sentiment="neutral")
+
+    r = client.get("/api/calls", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 2
+    assert {row["session_id"] for row in body["results"]} == {"ok1", "ok2"}
+
+
+def test_list_calls_includes_error_when_flag_set(client):
+    _log(client, "ok", outcome="booked")
+    _log(client, "err", outcome="error", sentiment="neutral")
+
+    r = client.get("/api/calls?include_errors=true", headers=AUTH)
+    assert r.status_code == 200
+    assert r.json()["total"] == 2
+
+
+def test_list_calls_explicit_error_filter_still_works(client):
+    """Operators must still be able to inspect errors directly."""
+    _log(client, "ok", outcome="booked")
+    _log(client, "err", outcome="error", sentiment="neutral")
+
+    r = client.get("/api/calls?outcome=error", headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 1
+    assert body["results"][0]["session_id"] == "err"

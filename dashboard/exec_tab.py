@@ -91,6 +91,9 @@ def render() -> None:
 
     _render_avg_rounds_by_outcome(df)
     _render_delta_histogram(df, rate_by_load)
+    st.subheader("Lane intelligence — supply gaps")
+    _render_lane_gaps(calls)
+    st.subheader("Workhorse lanes")
     _render_top_lanes(df, lane_by_load)
 
 
@@ -432,6 +435,101 @@ def _render_delta_histogram(df: pd.DataFrame, rate_by_load: dict[str, float]) ->
         "floor is letting too many thin deals through. A narrow cluster near "
         "target means the policy is working as designed."
     )
+
+
+def _render_lane_gaps(calls: list[dict]) -> None:
+    """Prescriptive lane recommendations driven by no_match outcomes.
+
+    Every no_match call is a carrier we turned away because the loadboard
+    didn't have what they wanted. Group those calls by the carrier's stated
+    origin (HappyRobot extraction puts this in extracted.carrier_current_location;
+    the synthetic seeder uses the legacy key 'current_location' — handle both).
+    Origins that show up ≥2 times in the period are concrete sourcing leads:
+    "more carriers in Dallas keep calling without a load" → broker should
+    source more Dallas-origin freight.
+
+    This is the one prescriptive insight on the dashboard: it says where to
+    *add* supply, not just describe what already happened.
+    """
+    no_match = [c for c in calls if c.get("outcome") == "no_match"]
+    total_no_match = len(no_match)
+    if total_no_match == 0:
+        st.caption(
+            "No `no_match` calls in this window — every carrier who reached "
+            "the load-search step found something to negotiate on. If this "
+            "stays true, your load board coverage is tracking carrier demand."
+        )
+        return
+
+    origin_counts: dict[str, int] = {}
+    missing_origin = 0
+    for call in no_match:
+        extracted = call.get("extracted") or {}
+        origin = (
+            extracted.get("carrier_current_location")
+            or extracted.get("current_location")
+            or extracted.get("origin")
+        )
+        if not origin:
+            missing_origin += 1
+            continue
+        origin_counts[origin] = origin_counts.get(origin, 0) + 1
+
+    if not origin_counts:
+        st.caption(
+            f"{total_no_match} `no_match` calls this period, but none had a "
+            "carrier origin extracted. Add `carrier_current_location` to the "
+            "HappyRobot post-call extraction node to unlock sourcing recommendations."
+        )
+        return
+
+    df = (
+        pd.DataFrame(
+            [{"Origin": k, "Calls": v} for k, v in origin_counts.items()]
+        )
+        .sort_values("Calls", ascending=True)
+        .tail(8)
+    )
+    fig = px.bar(
+        df,
+        x="Calls",
+        y="Origin",
+        orientation="h",
+        title="Origins where carriers called but we had nothing to pitch",
+        color_discrete_sequence=["#e67e22"],
+        text=df["Calls"].map(str),
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_layout(xaxis_title="No-match calls", yaxis_title="")
+    st.plotly_chart(fig, use_container_width=True)
+
+    leads = [(origin, n) for origin, n in origin_counts.items() if n >= 2]
+    leads.sort(key=lambda pair: pair[1], reverse=True)
+    if leads:
+        top_origin, top_n = leads[0]
+        extras = ""
+        if len(leads) > 1:
+            extras = " Other supply gaps: " + ", ".join(
+                f"{o} ({n})" for o, n in leads[1:4]
+            ) + "."
+        st.success(
+            f"**Sourcing lead:** {top_n} carriers based in **{top_origin}** "
+            f"called and walked away because the load board had no match. "
+            f"Source more freight originating in {top_origin} — every covered "
+            f"call here is a booking the agent can convert.{extras}"
+        )
+    else:
+        st.caption(
+            "No origin reached the recommendation threshold (≥2 no-match calls "
+            "from the same city). Widen the date range or wait for more volume "
+            "to surface a sourcing lead."
+        )
+
+    if missing_origin > 0:
+        st.caption(
+            f"{missing_origin} of {total_no_match} no-match calls are missing "
+            "an extracted origin and were skipped from the recommendation."
+        )
 
 
 def _render_top_lanes(df: pd.DataFrame, lane_by_load: dict[str, str]) -> None:
