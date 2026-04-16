@@ -26,7 +26,7 @@ Carrier (web call)
    ▼                            ▼
 ┌────────────────┐      ┌─────────────────┐
 │ FastAPI  (ECS) │      │ Streamlit (ECS) │
-│ 6 endpoints    │      │ Ops + Exec tabs │
+│ 9 endpoints    │      │ Ops + Exec tabs │
 └──────┬─────────┘      └────────┬────────┘
        │                         │
        └──────────┬──────────────┘
@@ -94,7 +94,11 @@ A decision tool for two users: a floor manager on the **Ops** tab and a commerci
 - **Where the agent is winning** — acceptance rate and avg margin by equipment type, side by side, with a decision caption pointing to the best/worst type. Tells a sales manager which equipment segments to double down on and which to tune.
 - **Tone vs. close rate** — acceptance rate split by call sentiment (replaces the aimless sentiment donut), with a recoverable-declines callout. Turns sentiment from vanity into an actionable tone-recovery signal.
 - **Volume & outcomes** — stacked-by-outcome timeline and outcome mix donut.
-- **Avg rounds by outcome**, **margin vs loadboard histogram**, and **top booked lanes** — each with a bold *Decision:* caption explaining what a drop or shift in the chart should trigger.
+- **Avg rounds by outcome** and **margin vs loadboard histogram** — each with a bold *Decision:* caption explaining what a drop or shift in the chart should trigger.
+- **Lane intelligence — supply gaps** — aggregates every `no_match` outcome by carrier origin and surfaces concrete sourcing leads ("five carriers in Dallas called and walked because the load board had no match → source more Dallas-origin freight"). The one prescriptive insight on the dashboard: it tells the broker where to *add* loads, not just describe what already happened.
+- **Workhorse lanes** — top-booked-lanes ranking, week-over-week stability check.
+
+Spurious `error` outcomes (e.g. a session that fails because the carrier closes the browser tab mid-call) are persisted for forensic visibility but excluded from the Ops live feed and from the agent-impact aggregates by default. Inspect them explicitly with `?outcome=error` or `?include_errors=true` on `/api/calls` and `/api/metrics/summary`.
 
 Spec in `docs/DASHBOARD.md`.
 
@@ -124,7 +128,7 @@ cd api
 python -m pytest tests/
 ```
 
-**85 tests** covering negotiation policy (all 4 docs/NEGOTIATION.md worked examples verbatim), endpoint happy paths, 401 auth failures, rate limiting, FMCSA mocking, metrics aggregation (incl. rep-hours-saved, recoverable declines, acceptance-by-sentiment, per-equipment breakdown, and the per-call negotiation timeline), and defensive coercion for LLM-originated tool-call payloads (number-to-string, flexible datetime, transcript array flattening).
+**90 tests** covering negotiation policy (all 4 docs/NEGOTIATION.md worked examples verbatim), endpoint happy paths, 401 auth failures, rate limiting, FMCSA mocking, metrics aggregation (incl. rep-hours-saved, recoverable declines, acceptance-by-sentiment, per-equipment breakdown, the per-call negotiation timeline, and the error-outcome filter behavior on both `/calls` and `/metrics/summary`), and defensive coercion for LLM-originated tool-call payloads (number-to-string, flexible datetime, transcript array flattening).
 
 If the local environment has a pytest plugin conflict (common on anaconda boxes), run with autoloading disabled:
 
