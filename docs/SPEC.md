@@ -46,6 +46,8 @@ An AI voice agent, built on the HappyRobot platform, that answers inbound carrie
 | F9 | Classify carrier sentiment | HappyRobot post-call node |
 | F10 | Persist all of the above | `/log-call` |
 | F11 | Display metrics dashboard (Ops + Exec tabs) | Streamlit |
+| F12 | Call-flow Sankey + geographic lane map with supply-gap overlay | Streamlit (Exec tab) |
+| F13 | Weekly Report tab — prose executive summary with auto-generated bullets | Streamlit (Report tab) |
 
 ## Non-functional requirements
 

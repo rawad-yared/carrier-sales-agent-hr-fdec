@@ -26,7 +26,7 @@ Carrier (web call)
    ▼                            ▼
 ┌────────────────┐      ┌─────────────────┐
 │ FastAPI  (ECS) │      │ Streamlit (ECS) │
-│ 9 endpoints    │      │ Ops + Exec tabs │
+│ 9 endpoints    │      │ Ops/Exec/Report │
 └──────┬─────────┘      └────────┬────────┘
        │                         │
        └──────────┬──────────────┘
@@ -85,18 +85,22 @@ See `docs/NEGOTIATION.md` for the exact rules and `api/app/services/negotiation.
 
 ## Dashboard
 
-A decision tool for two users: a floor manager on the **Ops** tab and a commercial lead on the **Exec** tab. Every chart is captioned with the decision it drives, not just what it shows. Both tabs read from the same Postgres the agent writes to — there is no separate analytics pipeline, no mock data, no stitched-together components.
+A decision tool for three audiences: a floor manager on the **Ops** tab, a commercial lead on the **Exec** tab, and a VP who wants a prose readout on the **Report** tab. Every chart is captioned with the decision it drives, not just what it shows. All tabs read from the same Postgres the agent writes to — there is no separate analytics pipeline, no mock data, no stitched-together components.
 
 **Ops — live broker console.** Calls today, active now, booked today, acceptance today, and *recoverable declines* (carriers who walked on price but left on good terms — prime human-rep callback targets). One-click "Recoverable declines" quick filter. Filterable call feed with color-coded outcome badges. Drill into any call to see the **negotiation timeline** — one row per `/evaluate-offer` tool call the agent made during the conversation, with the exact reasoning the policy returned ("offer above floor but below target, countering at midpoint"). Full transcript and HappyRobot post-call extracted fields also visible in the drill-down.
 
 **Exec — program overview.** Opens with a **hero agent-impact banner**: "In the last 30 days the agent handled N calls, booked $X in revenue at +Y% vs loadboard, and saved an estimated Z hours of rep time (≈ $W at $45/hr)." Below that:
 
+- **Call flow — Sankey** — inbound calls → outcome → reason bucket, all in one diagram. Booked calls split by how much margin we gave up (at/above list, small/medium/large concession); declined calls split by whether sentiment left the door open for a recoverable callback; no-match calls split by equipment asked for. A fat "Large (>10%)" ribbon under Booked means the floor is leaking margin; a fat "Recoverable" ribbon under Carrier declined is a queue for human-rep follow-up.
+- **Lane map** — every booked lane rendered as a polyline on a US map, colored by margin vs loadboard (green above list → red large concession) so margin leakage is geographic, not just aggregate. A second layer marks **no-match origins** sized by call count — orange circles where carriers called and walked because coverage was missing.
 - **Where the agent is winning** — acceptance rate and avg margin by equipment type, side by side, with a decision caption pointing to the best/worst type. Tells a sales manager which equipment segments to double down on and which to tune.
 - **Tone vs. close rate** — acceptance rate split by call sentiment (replaces the aimless sentiment donut), with a recoverable-declines callout. Turns sentiment from vanity into an actionable tone-recovery signal.
 - **Volume & outcomes** — stacked-by-outcome timeline and outcome mix donut.
 - **Avg rounds by outcome** and **margin vs loadboard histogram** — each with a bold *Decision:* caption explaining what a drop or shift in the chart should trigger.
 - **Lane intelligence — supply gaps** — aggregates every `no_match` outcome by carrier origin and surfaces concrete sourcing leads ("five carriers in Dallas called and walked because the load board had no match → source more Dallas-origin freight"). The one prescriptive insight on the dashboard: it tells the broker where to *add* loads, not just describe what already happened.
 - **Workhorse lanes** — top-booked-lanes ranking, week-over-week stability check.
+
+**Report — weekly executive summary.** A prose readout of what the agent did this period, ready to forward. Headline banner + snapshot KPIs + 4–6 auto-generated bullets covering volume trend vs prior period, acceptance direction, best/worst equipment, recoverable declines, labor savings, and margin movement. Period selector (7 / 14 / 30 days). Pulls from the same metrics endpoints as the Exec tab — no new API surface.
 
 Spurious `error` outcomes (e.g. a session that fails because the carrier closes the browser tab mid-call) are persisted for forensic visibility but excluded from the Ops live feed and from the agent-impact aggregates by default. Inspect them explicitly with `?outcome=error` or `?include_errors=true` on `/api/calls` and `/api/metrics/summary`.
 
@@ -166,7 +170,7 @@ carrier-sales-agent-hr-fdec/
 ├── README.md                 ← you are here
 ├── docs/                     ← specs and design docs (human-authored)
 ├── api/                      ← FastAPI backend + Alembic + tests
-├── dashboard/                ← Streamlit Ops + Exec tabs
+├── dashboard/                ← Streamlit Ops / Exec / Report tabs
 ├── infra/                    ← Terraform modules
 ├── data/                     ← seed loads (loads.json)
 ├── happyrobot/               ← HappyRobot workflow artifacts (tool defs, prompts)

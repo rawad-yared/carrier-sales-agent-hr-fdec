@@ -30,7 +30,8 @@ def render() -> None:
     st.caption(
         "What the inbound agent is worth, where it's winning, and where to tune it. "
         "Every chart below drives a specific decision — the caption under each "
-        "explains what it tells you and what to do about it."
+        "explains what it tells you and what to do about it. "
+        f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}."
     )
 
     with st.sidebar:
@@ -73,6 +74,14 @@ def render() -> None:
     # format="ISO8601" tolerates mixed fractional-second precision across rows
     df["started_at_dt"] = pd.to_datetime(df["started_at"], format="ISO8601")
     df["final_price_f"] = pd.to_numeric(df["final_price"], errors="coerce")
+
+    st.subheader("Call flow — from inbound to outcome")
+    _render_call_flow_sankey(calls, rate_by_load)
+    st.divider()
+
+    st.subheader("Lane map — bookings & supply gaps")
+    _render_lane_map(calls, rate_by_load, loads)
+    st.divider()
 
     st.subheader("Where the agent is winning")
     _render_equipment_breakdown(equipment)
@@ -122,7 +131,8 @@ def _render_hero(metrics: dict, range_days: int) -> None:
     # garbles any line that mixes currency with other formatting. Escape
     # every `$` as `\$` so the banner renders as plain text.
     headline = (
-        f"In the last **{range_days} days** the agent handled **{calls} calls**, "
+        f"**Executive summary — last {range_days} days.** "
+        f"The agent handled **{calls} calls**, "
         f"booked **{booked}** of them for **\\${revenue:,.0f}** in revenue "
         f"at **{margin_sign}{avg_margin:.1%}** vs. loadboard, "
         f"and saved an estimated **{hours_saved:.0f} hours** of rep time "
@@ -530,6 +540,378 @@ def _render_lane_gaps(calls: list[dict]) -> None:
             f"{missing_origin} of {total_no_match} no-match calls are missing "
             "an extracted origin and were skipped from the recommendation."
         )
+
+
+SANKEY_MIN_CALLS = 15  # below this, the Sankey looks sparse — fall back to donut
+
+SANKEY_OUTCOME_LABEL = {
+    "booked": "Booked",
+    "carrier_declined": "Carrier declined",
+    "broker_declined": "Broker declined",
+    "no_match": "No match",
+    "carrier_ineligible": "Ineligible",
+    "abandoned": "Abandoned",
+    "error": "Error",
+}
+
+
+def _booked_margin_bucket(delta: float) -> str:
+    """Bucket a booked call's margin vs loadboard into the four Sankey leaves.
+
+    `delta` is (final_price - loadboard_rate) / loadboard_rate.
+    """
+    if delta >= 0:
+        return "At/Above list"
+    if delta >= -0.05:
+        return "Small concession (≤5%)"
+    if delta >= -0.10:
+        return "Medium (5–10%)"
+    return "Large (>10%)"
+
+
+def _render_call_flow_sankey(calls: list[dict], rate_by_load: dict[str, float]) -> None:
+    """Sankey diagram of Total → Outcome → Reason buckets.
+
+    Surfaces the same flow the competitor shows, but driven by OUR richer
+    7-outcome taxonomy and OUR prescriptive buckets (delta-from-loadboard
+    for bookings, sentiment for declines — which is the recoverable-
+    declines differentiator rendered graphically).
+    """
+    total = len(calls)
+    if total < SANKEY_MIN_CALLS:
+        st.caption(
+            f"Sankey appears once the period has ≥{SANKEY_MIN_CALLS} calls "
+            f"(currently {total}). Widen the date range or seed more data."
+        )
+        return
+
+    nodes: list[str] = ["All calls"]
+    node_idx: dict[str, int] = {"All calls": 0}
+
+    def _ensure(label: str) -> int:
+        if label not in node_idx:
+            node_idx[label] = len(nodes)
+            nodes.append(label)
+        return node_idx[label]
+
+    # Level 1: outcome totals
+    outcome_counts: dict[str, int] = {}
+    for call in calls:
+        outcome_counts[call["outcome"]] = outcome_counts.get(call["outcome"], 0) + 1
+
+    # Level 2: reason buckets keyed by (outcome, bucket_label)
+    leaf_counts: dict[tuple[str, str], int] = {}
+    for call in calls:
+        outcome = call["outcome"]
+        bucket = _reason_bucket_for(call, rate_by_load)
+        leaf_counts[(outcome, bucket)] = leaf_counts.get((outcome, bucket), 0) + 1
+
+    # Build node/link arrays
+    sources: list[int] = []
+    targets: list[int] = []
+    values: list[int] = []
+    link_colors: list[str] = []
+    root = 0
+
+    for outcome, count in outcome_counts.items():
+        outcome_label = SANKEY_OUTCOME_LABEL.get(outcome, outcome)
+        outcome_node = _ensure(outcome_label)
+        sources.append(root)
+        targets.append(outcome_node)
+        values.append(count)
+        link_colors.append(OUTCOME_COLORS.get(outcome, "#bbb"))
+
+        for (o, bucket), n in leaf_counts.items():
+            if o != outcome:
+                continue
+            # Suffix buckets with the outcome so identical labels across
+            # outcomes (e.g. "Other") remain distinct nodes.
+            leaf_label = f"{bucket}"
+            leaf_node = _ensure(leaf_label)
+            sources.append(outcome_node)
+            targets.append(leaf_node)
+            values.append(n)
+            link_colors.append(OUTCOME_COLORS.get(outcome, "#bbb"))
+
+    node_colors = ["#2c3e50"] + [
+        OUTCOME_COLORS.get(_node_to_outcome(label), "#95a5a6")
+        for label in nodes[1:]
+    ]
+
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                node={
+                    "pad": 18,
+                    "thickness": 20,
+                    "line": {"color": "rgba(0,0,0,0.2)", "width": 0.5},
+                    "label": nodes,
+                    "color": node_colors,
+                },
+                link={
+                    "source": sources,
+                    "target": targets,
+                    "value": values,
+                    "color": [_translucent(c, 0.35) for c in link_colors],
+                },
+            )
+        ]
+    )
+    fig.update_layout(
+        title=f"Where {total} calls went — and why",
+        font=dict(size=12),
+        height=450,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(
+        "**How to read it:** width = call count. Left band is every inbound call. "
+        "Middle band breaks them by outcome. Right band shows *why* — booked calls "
+        "are bucketed by how much margin we gave up, declined calls by whether "
+        "sentiment left the door open for a recoverable callback, no-match calls "
+        "by equipment type asked for. A fat 'Large (>10%)' ribbon under Booked means "
+        "the floor is leaking margin; a fat 'Recoverable' ribbon under Carrier declined "
+        "is a queue for human rep follow-up."
+    )
+
+
+def _reason_bucket_for(call: dict, rate_by_load: dict[str, float]) -> str:
+    """Assign a call to its right-hand-side Sankey node based on outcome."""
+    outcome = call["outcome"]
+    if outcome == "booked":
+        lid = call.get("load_id")
+        price = call.get("final_price")
+        if lid and price is not None and lid in rate_by_load and rate_by_load[lid] > 0:
+            delta = (float(price) - rate_by_load[lid]) / rate_by_load[lid]
+            return _booked_margin_bucket(delta)
+        return "Unmatched booking"
+    if outcome in ("carrier_declined", "broker_declined"):
+        if call.get("sentiment") in ("positive", "neutral"):
+            return "Recoverable (pos/neu)"
+        return "Hard no (negative)"
+    if outcome == "no_match":
+        extracted = call.get("extracted") or {}
+        # API flattens HappyRobot's extraction schema — `equipment` is the
+        # key that actually comes through; the others are kept for
+        # forward-compat with workflow variants.
+        equip = (
+            extracted.get("equipment")
+            or extracted.get("carrier_equipment")
+            or extracted.get("equipment_type")
+        )
+        return f"Asked: {equip}" if equip else "No equipment recorded"
+    if outcome == "carrier_ineligible":
+        return "Failed FMCSA check"
+    if outcome == "abandoned":
+        return "Caller dropped"
+    if outcome == "error":
+        return "System error"
+    return "Other"
+
+
+def _node_to_outcome(label: str) -> str:
+    """Reverse-lookup outcome key from a Sankey node label for node coloring."""
+    for key, display in SANKEY_OUTCOME_LABEL.items():
+        if display == label:
+            return key
+    return ""
+
+
+def _translucent(hex_color: str, alpha: float) -> str:
+    """Convert #rrggbb to rgba(r,g,b,alpha) for softer Sankey ribbons."""
+    c = hex_color.lstrip("#")
+    if len(c) != 6:
+        return f"rgba(150,150,150,{alpha})"
+    r = int(c[0:2], 16)
+    g = int(c[2:4], 16)
+    b = int(c[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _render_lane_map(
+    calls: list[dict],
+    rate_by_load: dict[str, float],
+    loads: list[dict],
+) -> None:
+    """Folium map with two layers: booked-lane polylines and no-match origins.
+
+    Booked lanes are colored by margin vs loadboard (green/amber/red) —
+    richer than the competitor's equipment-only coloring. No-match origins
+    are sized by count so the map doubles as a sourcing-lead visualization.
+    """
+    try:
+        import folium
+        from streamlit_folium import st_folium
+    except ImportError:
+        st.warning(
+            "Map rendering requires `streamlit-folium` and `folium`. "
+            "Run `pip install -r dashboard/requirements.txt` and restart."
+        )
+        return
+
+    from geocodes import lookup
+
+    load_by_id = {load["load_id"]: load for load in loads}
+
+    booked_segments: list[dict] = []
+    unmapped_booked = 0
+    for call in calls:
+        if call.get("outcome") != "booked":
+            continue
+        lid = call.get("load_id")
+        if not lid or lid not in load_by_id:
+            unmapped_booked += 1
+            continue
+        load = load_by_id[lid]
+        origin_coords = lookup(load.get("origin"))
+        dest_coords = lookup(load.get("destination"))
+        if not origin_coords or not dest_coords:
+            unmapped_booked += 1
+            continue
+        price = call.get("final_price")
+        loadboard = rate_by_load.get(lid)
+        delta = None
+        if price is not None and loadboard:
+            delta = (float(price) - float(loadboard)) / float(loadboard)
+        booked_segments.append(
+            {
+                "origin": load["origin"],
+                "destination": load["destination"],
+                "origin_coords": origin_coords,
+                "dest_coords": dest_coords,
+                "delta": delta,
+                "final_price": float(price) if price is not None else None,
+                "loadboard_rate": float(loadboard) if loadboard else None,
+                "load_id": lid,
+            }
+        )
+
+    gap_points: dict[str, int] = {}
+    for call in calls:
+        if call.get("outcome") != "no_match":
+            continue
+        extracted = call.get("extracted") or {}
+        origin = (
+            extracted.get("carrier_current_location")
+            or extracted.get("current_location")
+            or extracted.get("origin")
+        )
+        if origin and lookup(origin):
+            gap_points[origin] = gap_points.get(origin, 0) + 1
+
+    if not booked_segments and not gap_points:
+        st.caption(
+            "No booked lanes or supply gaps with known coordinates in this window. "
+            "Add seed data or widen the date range."
+        )
+        return
+
+    # Center on the continental US
+    fmap = folium.Map(location=[39.5, -96.0], zoom_start=4, tiles="cartodbpositron")
+
+    booked_layer = folium.FeatureGroup(name=f"Booked lanes ({len(booked_segments)})", show=True)
+    for seg in booked_segments:
+        color = _delta_to_color(seg["delta"])
+        tooltip = _booked_tooltip(seg)
+        folium.PolyLine(
+            locations=[seg["origin_coords"], seg["dest_coords"]],
+            color=color,
+            weight=3,
+            opacity=0.75,
+            tooltip=tooltip,
+        ).add_to(booked_layer)
+    booked_layer.add_to(fmap)
+
+    if gap_points:
+        gap_layer = folium.FeatureGroup(
+            name=f"Supply gaps — no-match origins ({sum(gap_points.values())})",
+            show=True,
+        )
+        max_n = max(gap_points.values())
+        for origin, n in gap_points.items():
+            coords = lookup(origin)
+            if not coords:
+                continue
+            radius = 6 + 12 * (n / max_n)
+            folium.CircleMarker(
+                location=coords,
+                radius=radius,
+                color="#e67e22",
+                fill=True,
+                fill_color="#e67e22",
+                fill_opacity=0.55,
+                weight=1,
+                tooltip=f"{origin}: {n} no-match call{'s' if n != 1 else ''} — sourcing lead",
+            ).add_to(gap_layer)
+        gap_layer.add_to(fmap)
+
+    folium.LayerControl(collapsed=False).add_to(fmap)
+
+    # Inline legend via Folium's macro-less HTML inject
+    legend_html = (
+        '<div style="position: fixed; bottom: 30px; left: 30px; z-index: 9999; '
+        'background: white; padding: 8px 12px; border: 1px solid #ccc; '
+        'border-radius: 4px; font-size: 12px; line-height: 1.5;">'
+        '<b>Booked lane color</b><br>'
+        '<span style="color:#2ecc71;">●</span> At/above list<br>'
+        '<span style="color:#f39c12;">●</span> ≤5% concession<br>'
+        '<span style="color:#e67e22;">●</span> 5–10% concession<br>'
+        '<span style="color:#c0392b;">●</span> &gt;10% concession<br>'
+        '<span style="color:#e67e22;">●</span> Supply-gap marker'
+        '</div>'
+    )
+    fmap.get_root().html.add_child(folium.Element(legend_html))
+
+    st_folium(fmap, width=None, height=500, returned_objects=[])
+
+    captions: list[str] = []
+    if booked_segments:
+        deltas = [s["delta"] for s in booked_segments if s["delta"] is not None]
+        if deltas:
+            leaking = sum(1 for d in deltas if d < -0.10)
+            if leaking:
+                captions.append(
+                    f"**{leaking} of {len(deltas)} booked lanes** closed >10% below list — "
+                    "the red segments on the map are where the floor is leaking margin."
+                )
+    if gap_points:
+        top = max(gap_points.items(), key=lambda kv: kv[1])
+        captions.append(
+            f"**Sourcing lead:** {top[1]} no-match calls from **{top[0]}** — "
+            "orange circle size scales with volume. Add freight originating here."
+        )
+    if unmapped_booked:
+        captions.append(
+            f"{unmapped_booked} booked call(s) skipped — either unknown city "
+            "or the load isn't in the current board snapshot."
+        )
+    for line in captions:
+        st.caption(line)
+
+
+def _delta_to_color(delta: float | None) -> str:
+    if delta is None:
+        return "#7f8c8d"
+    if delta >= 0:
+        return "#2ecc71"
+    if delta >= -0.05:
+        return "#f39c12"
+    if delta >= -0.10:
+        return "#e67e22"
+    return "#c0392b"
+
+
+def _booked_tooltip(seg: dict) -> str:
+    lane = f"{seg['origin']} → {seg['destination']}"
+    if seg["delta"] is None:
+        return f"{lane} (load {seg['load_id']})"
+    price = seg["final_price"]
+    loadboard = seg["loadboard_rate"]
+    return (
+        f"{lane}<br>Load {seg['load_id']}"
+        f"<br>Final ${price:,.0f} vs list ${loadboard:,.0f}"
+        f"<br>Margin {seg['delta']:+.1%}"
+    )
 
 
 def _render_top_lanes(df: pd.DataFrame, lane_by_load: dict[str, str]) -> None:
