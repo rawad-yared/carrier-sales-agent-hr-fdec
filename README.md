@@ -45,6 +45,12 @@ Carrier (web call)
 | Infra | AWS ECS Fargate · ALB · RDS · ACM · Route 53 · Secrets Manager · CloudWatch · ECR |
 | IaC | Terraform (S3 + DynamoDB state) |
 
+### Full architecture
+
+![Full architecture diagram — HappyRobot voice agent, AWS ECS Fargate cluster running FastAPI + Streamlit behind an ALB, RDS Postgres, Secrets Manager, ECR, CloudWatch, with FMCSA as an external dependency](docs/assets/architecture-diagram.png)
+
+<sub>Arrow semantics — <b style="color:#2563EB">solid blue</b>: data flow (HTTPS) · <b style="color:#16A34A">dashed green</b>: read (SELECT, secrets fetch, outbound lookup) · <b style="color:#D97706">solid amber</b>: write (INSERT, log emit) · <b style="color:#64748B">dotted gray</b>: control (DNS, TLS attach, image pull). Vector source: <a href="docs/assets/architecture-diagram.svg"><code>docs/assets/architecture-diagram.svg</code></a>.</sub>
+
 See `docs/ARCHITECTURE.md` for the full system diagram and component breakdown.
 
 ---
