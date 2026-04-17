@@ -25,7 +25,7 @@ SENTIMENT_COLORS = {
 }
 
 
-def render() -> None:
+def render(range_days: int) -> None:
     st.header("Exec — Program Overview")
     st.caption(
         "What the inbound agent is worth, where it's winning, and where to tune it. "
@@ -33,15 +33,6 @@ def render() -> None:
         "explains what it tells you and what to do about it. "
         f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}."
     )
-
-    with st.sidebar:
-        st.subheader("Exec range")
-        range_days = st.selectbox(
-            "Date range",
-            options=[7, 14, 30, 60, 90],
-            index=2,
-            format_func=lambda d: f"Last {d} days",
-        )
 
     since_dt = datetime.now(timezone.utc) - timedelta(days=range_days)
 
@@ -135,10 +126,23 @@ def _render_hero(metrics: dict, range_days: int) -> None:
         f"The agent handled **{calls} calls**, "
         f"booked **{booked}** of them for **\\${revenue:,.0f}** in revenue "
         f"at **{margin_sign}{avg_margin:.1%}** vs. loadboard, "
-        f"and saved an estimated **{hours_saved:.0f} hours** of rep time "
+        f"and saved an estimated **{_fmt_hours(hours_saved)}** of rep time "
         f"(≈ **\\${labor_saved:,.0f}** at \\${labor_rate:.0f}/hr loaded cost)."
     )
     st.success(headline)
+
+
+def _fmt_hours(hours: float) -> str:
+    """Short windows produce fractional hours — a raw `{:.0f}` would read "0 hours"
+    while the dollar figure is non-zero, which looks like a broken rate.
+    """
+    if hours <= 0:
+        return "0 hours"
+    if hours < 1:
+        return f"{int(round(hours * 60))} minutes"
+    if hours < 10:
+        return f"{hours:.1f} hours"
+    return f"{hours:.0f} hours"
 
 
 def _render_kpis(metrics: dict) -> None:

@@ -6,6 +6,9 @@ import exec_tab
 import ops
 import report
 
+RANGE_OPTIONS = [7, 14, 30, 60, 90]
+DEFAULT_RANGE_DAYS = 30
+
 st.set_page_config(
     page_title="Acme Logistics — Broker Console",
     layout="wide",
@@ -56,13 +59,27 @@ except httpx.HTTPError as exc:
     st.error(f"API unreachable at {client.BASE_URL}: {exc}")
     st.stop()
 
+# Shared Exec/Report range selector — lifted to app-level so both tabs
+# always pull the same window. Two separate widgets used to drift (Exec
+# defaulted 30d, Report 7d) and the labor-savings numbers looked
+# inconsistent at a glance.
+with st.sidebar:
+    st.subheader("Exec / Report range")
+    shared_range_days = st.selectbox(
+        "Date range",
+        options=RANGE_OPTIONS,
+        index=RANGE_OPTIONS.index(DEFAULT_RANGE_DAYS),
+        format_func=lambda d: f"Last {d} days",
+        key="shared_range_days",
+    )
+
 ops_pane, exec_pane, report_pane = st.tabs(["Ops", "Exec", "Report"])
 
 with ops_pane:
     ops.render()
 
 with exec_pane:
-    exec_tab.render()
+    exec_tab.render(shared_range_days)
 
 with report_pane:
-    report.render()
+    report.render(shared_range_days)

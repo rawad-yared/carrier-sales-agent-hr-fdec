@@ -12,23 +12,14 @@ import streamlit as st
 import client
 
 
-def render() -> None:
-    st.header("Report — Weekly Executive Summary")
+def render(range_days: int) -> None:
+    st.header("Report — Executive Summary")
     st.caption(
-        "A prose readout of what the inbound agent did this week — the things "
-        "worth forwarding to the ops lead and the VP. Drill into the Ops or "
-        "Exec tab for the underlying data."
+        "A prose readout of what the inbound agent did in the selected window — "
+        "the things worth forwarding to the ops lead and the VP. Drill into the "
+        "Ops or Exec tab for the underlying data. Change the range in the shared "
+        "sidebar control above."
     )
-
-    with st.sidebar:
-        st.subheader("Report range")
-        range_days = st.selectbox(
-            "Period",
-            options=[7, 14, 30],
-            index=0,
-            format_func=lambda d: f"Last {d} days",
-            key="report_range_days",
-        )
 
     since_dt = datetime.now(timezone.utc) - timedelta(days=range_days)
     prev_since_dt = since_dt - timedelta(days=range_days)
@@ -64,13 +55,31 @@ def _render_headline(metrics: dict, range_days: int) -> None:
     revenue = float(metrics.get("total_booked_revenue", 0) or 0)
     hours_saved = float(metrics.get("estimated_rep_hours_saved", 0) or 0)
     labor_saved = float(metrics.get("estimated_labor_cost_saved_usd", 0) or 0)
+    labor_rate = float(metrics.get("labor_cost_per_hour_usd", 45) or 45)
 
     st.success(
         f"In the last **{range_days} days** the agent handled **{calls} inbound calls**, "
         f"booked **{booked}** of them for **\\${revenue:,.0f}** in revenue, and saved an "
-        f"estimated **{hours_saved:.0f} rep-hours** (≈ **\\${labor_saved:,.0f}** in loaded "
-        f"labor cost). Keep reading for what moved and what to do next."
+        f"estimated **{_fmt_hours(hours_saved)}** of rep time "
+        f"(≈ **\\${labor_saved:,.0f}** at \\${labor_rate:.0f}/hr loaded cost). "
+        f"Keep reading for what moved and what to do next."
     )
+
+
+def _fmt_hours(hours: float) -> str:
+    """Short windows produce fractional hours — `{:.0f}` would print "0 rep-hours"
+    alongside non-zero dollar savings, which reads as a broken rate. Show
+    minutes for anything under an hour, one decimal up to 10, whole numbers
+    after that.
+    """
+    if hours <= 0:
+        return "0 rep-hours"
+    if hours < 1:
+        minutes = int(round(hours * 60))
+        return f"{minutes} rep-min"
+    if hours < 10:
+        return f"{hours:.1f} rep-hours"
+    return f"{hours:.0f} rep-hours"
 
 
 def _render_snapshot(metrics: dict) -> None:
@@ -181,10 +190,12 @@ def _build_bullets(
     # 5. Labor savings — the headline value line
     hours = float(metrics.get("estimated_rep_hours_saved", 0) or 0)
     dollars = float(metrics.get("estimated_labor_cost_saved_usd", 0) or 0)
+    labor_rate = float(metrics.get("labor_cost_per_hour_usd", 45) or 45)
     if hours > 0:
         bullets.append(
-            f"**~{hours:.0f} rep-hours saved** (≈ \\${dollars:,.0f} at loaded rate). "
-            "That's capacity freed up for outbound, not inbound triage."
+            f"**{_fmt_hours(hours)} saved** (≈ \\${dollars:,.0f} at "
+            f"\\${labor_rate:.0f}/hr loaded cost). That's capacity freed up for "
+            "outbound, not inbound triage."
         )
 
     # 6. Margin direction
